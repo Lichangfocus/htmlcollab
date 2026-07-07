@@ -89,7 +89,19 @@
 | `pull` | 输出反馈上下文 markdown |
 | `open` | 浏览器打开协作页 |
 
-### 3.7 基础设施
+### 3.7 无限画布协同（本地已验证，待部署上线）
+
+- ✅ **画布容器**：`/p/xxx` 即无限画布——pan/zoom（滚轮平移、Ctrl/双指缩放 4%~200%）、点状网格、默认聚焦最新主线帧（轻量评审者体验不变）
+- ✅ **版本帧时间轴**：主线沿横轴排布，变体帧挂在其 base 列下方并标注「变体 · 基于 vN」；帧栏反向缩放补偿（低倍率仍可读）；双击进帧交互 / Esc 逐层退出
+- ✅ **性能降级**：同屏最多 3 个 live iframe，视野外/低缩放自动降级占位卡
+- ✅ **实时协同**：画布对象 seq 增量轮询 1.5s（LWW），presence 光标（彩色姓名，跨端 <2s 可见）
+- ✅ **便签**：双击空白创建、拖拽、实时同步、进入 pull 上下文「画布备注」分区
+- ✅ **意图卡**：三来源（选元素提意图 / 评论线程转意图 / 页面级意图）+ 六类快捷类型；状态机 open→claimed（30min 超时回落）→resolved(vN)；卡片可拖拽、点锚点跳转元素
+- ✅ **Prompt 生成器**：意图卡/评论多选打包 → 生成含元素源码、`--base`、`--resolves` 的完整指令；复制时可认领（画布实时显示"谁的 agent 处理中"）
+- ✅ **并行 push 自动变体**：push 带 base 检测，落后于主线时自动成为变体帧（不覆盖不报错）；owner/editor 可「设为主线」
+- ✅ **回流升级**：pull 上下文新增「待处理意图」（含卡片 id）与「画布备注」分区；push `--resolves` 状态实时回流
+
+### 3.8 基础设施
 
 - ✅ Cloudflare Workers（OpenNext/Next.js 15）+ D1（SQLite 方言），零原生依赖
 - ✅ monorepo：`apps/web`（全栈）/ `packages/cli` / `plugins/htmlcollab`（skill）/ `docs`
@@ -111,7 +123,8 @@
 
 > 格式建议：`- [ ] 功能名 —— 一句话价值 / 触发它的用户场景`（讨论后再展开成设计）
 
-- [ ] **无限画布协同（P0+P1，已定稿待实现）** —— 画布容器承载人-人/人-agent 协同：版本帧时间轴、实时便签与 presence、意图卡-指令闭环、并行 push 自动变体。完整 spec 见 [docs/04-canvas-design.md](docs/04-canvas-design.md)
+- [ ] 画布 P2+：便签连线、区域批注、任意两帧可视化 diff、多视口帧、实时层升级 Durable Objects（spec 见 [docs/04-canvas-design.md](docs/04-canvas-design.md)）
+- [ ] 画布协同上线部署（远程 D1 迁移 0002 + deploy + CLI 0.3.0 发 npm）
 
 - [ ] raw 独立子域安全隔离（M4 安全模型全量落地，开放推广前置项）
 - [ ] 模糊 remap：ccId 丢失时按 tag+文本相似度重锚定

@@ -113,3 +113,106 @@ select.ver { border: 1px solid #d9d9e3; border-radius: 6px; padding: 4px 6px; fo
   .viewer aside { width: 100%; border-left: 0; border-top: 1px solid var(--border); height: 45%; flex: none; }
   .frame-wrap { padding: 8px; }
 }
+
+/* ================= 无限画布 ================= */
+.cv-root { position: fixed; inset: 0; overflow: hidden; background: #e9e9ef; touch-action: none; overscroll-behavior: none; }
+.cv-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.cv-world.cv-anim { transition: transform .36s cubic-bezier(.22,.9,.35,1); }
+.cv-bg { position: absolute; left: -100000px; top: -100000px; width: 200000px; height: 200000px;
+  background-image: radial-gradient(#c9c9d6 1.2px, transparent 1.2px); background-size: 28px 28px; }
+
+/* 帧 */
+.cv-frame { position: absolute; border-radius: 12px; background: #fff;
+  box-shadow: 0 4px 24px rgba(20,20,50,.10), 0 1px 3px rgba(20,20,50,.08); }
+.cv-frame.focused { box-shadow: 0 0 0 3px var(--brand), 0 12px 40px rgba(79,70,229,.25); }
+.cv-frame.variant .cv-frame-bar { background: #fdf6ec; }
+/* 帧标题栏按 --inv-z 反向补偿，低缩放下仍可读（Figma 式标签） */
+.cv-frame-bar { display: flex; align-items: center; gap: calc(8px * var(--inv-z, 1)); height: calc(40px * var(--inv-z, 1)); padding: 0 calc(12px * var(--inv-z, 1));
+  border-bottom: 1px solid var(--border-light); border-radius: 12px 12px 0 0; background: #fafafc; font-size: calc(13px * var(--inv-z, 1)); }
+.cv-vchip { font-weight: 700; color: var(--brand); background: #eef; padding: calc(2px * var(--inv-z, 1)) calc(10px * var(--inv-z, 1)); border-radius: 99px; font-size: calc(12px * var(--inv-z, 1)); }
+.cv-varchip { font-size: calc(11px * var(--inv-z, 1)); color: #b45309; background: #fef3c7; padding: calc(2px * var(--inv-z, 1)) calc(8px * var(--inv-z, 1)); border-radius: 99px; }
+.cv-frame-meta { color: var(--muted); font-size: calc(12px * var(--inv-z, 1)); }
+.cv-mini-btn { font-size: calc(12px * var(--inv-z, 1)) !important; padding: calc(3px * var(--inv-z, 1)) calc(10px * var(--inv-z, 1)) !important; border-radius: calc(6px * var(--inv-z, 1)) !important; }
+.cv-mini-btn { border: 1px solid #d9d9e3; background: #fff; border-radius: 6px; padding: 3px 10px; font-size: 12px; color: #444; }
+.cv-mini-btn:hover { border-color: var(--brand); color: var(--brand); }
+.cv-frame-body { position: relative; border-radius: 0 0 12px 12px; overflow: hidden; background: #fff; }
+.cv-frame-body iframe { width: 100%; height: 100%; border: 0; display: block; }
+.cv-frame-shield { position: absolute; inset: 0; cursor: grab; }
+.cv-frame-shield:active { cursor: grabbing; }
+.cv-placeholder { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #b9b9c8; }
+.cv-placeholder .ph-num { font-size: 88px; font-weight: 800; color: #dcdcea; }
+.cv-placeholder .ph-title { font-size: 24px; color: #9a9ab0; }
+.cv-placeholder .ph-meta { font-size: 16px; }
+
+/* 便签 */
+.cv-note { position: absolute; background: #fef9c3; border-radius: 4px 4px 14px 4px; padding: 12px 12px 8px;
+  box-shadow: 0 6px 18px rgba(120,100,10,.18); cursor: grab; display: flex; flex-direction: column; font-size: 14px; }
+.cv-note:active { cursor: grabbing; }
+.cv-note textarea { flex: 1; min-height: 80px; border: 0; background: transparent; font-family: inherit; font-size: 14px; resize: none; outline: none; }
+.cv-note-text { flex: 1; white-space: pre-wrap; word-break: break-word; line-height: 1.5; min-height: 80px; }
+.cv-note-foot { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #a16207; margin-top: 6px; }
+.cv-dim { color: #cabf6e; }
+
+/* 意图卡 */
+.cv-intent { position: absolute; background: #fff; border: 1px solid var(--border-light); border-left: 4px solid var(--brand);
+  border-radius: 10px; padding: 10px 12px; box-shadow: 0 6px 20px rgba(20,20,50,.12); cursor: grab; font-size: 13px; }
+.cv-intent:active { cursor: grabbing; }
+.cv-intent.st-resolved { opacity: .6; border-left-color: #10b981; }
+.cv-intent.st-claimed { border-left-color: #d97706; }
+.cv-intent-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.cv-chip { font-size: 11px; background: #eef; color: var(--brand); padding: 2px 8px; border-radius: 99px; flex: none; }
+.cv-dot { width: 8px; height: 8px; border-radius: 99px; background: #f59e0b; flex: none; }
+.cv-dot.st-claimed { background: #d97706; animation: cv-pulse 1.6s infinite; }
+.cv-dot.st-resolved { background: #10b981; }
+@keyframes cv-pulse { 50% { opacity: .35; } }
+.cv-status-txt { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-intent-anchor { font-size: 11px; font-family: ui-monospace, monospace; color: var(--brand); background: #f4f4ff;
+  padding: 2px 6px; border-radius: 5px; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.cv-intent-text { line-height: 1.5; word-break: break-word; }
+.cv-intent-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+.cv-x { border: 0; background: none; color: #bbb; font-size: 12px; padding: 0 2px; }
+.cv-x:hover { color: #dc2626; }
+
+/* 光标（反向缩放，任何倍率下等大） */
+.cv-cursor { position: absolute; pointer-events: none; z-index: 50; transform: scale(var(--inv-z, 1)); transform-origin: 0 0; }
+.cv-cursor span { display: inline-block; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 99px; margin-left: 10px; white-space: nowrap; }
+
+/* 工具栏 */
+.cv-toolbar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 100;
+  display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+  border: 1px solid var(--border); border-radius: 14px; padding: 8px 14px; box-shadow: 0 8px 30px rgba(20,20,50,.12);
+  max-width: calc(100vw - 24px); }
+.cv-title { font-size: 14px; font-weight: 600; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-toolbar .spacer { min-width: 8px; }
+.cv-zoom { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.cv-zoom button { border: 1px solid #d9d9e3; background: #fff; border-radius: 6px; width: 24px; height: 24px; font-size: 14px; line-height: 1; }
+.cv-zoom span { min-width: 42px; text-align: center; }
+
+/* 面板 */
+.cv-panel { position: fixed; right: 12px; top: 70px; bottom: 12px; width: 330px; z-index: 90;
+  background: rgba(255,255,255,.96); backdrop-filter: blur(8px); border: 1px solid var(--border); border-radius: 14px;
+  display: flex; flex-direction: column; box-shadow: 0 8px 30px rgba(20,20,50,.10); overflow: hidden; }
+.cv-tabs { display: flex; border-bottom: 1px solid var(--border-light); }
+.cv-tabs button { flex: 1; border: 0; background: none; padding: 11px 0; font-size: 13px; color: var(--muted); border-bottom: 2px solid transparent; }
+.cv-tabs button.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+.cv-composer { padding: 12px 14px; border-bottom: 1px solid var(--border-light); }
+.cv-composer .placeholder { font-size: 12px; color: #aaa; line-height: 1.7; background: #fafafc; border: 1px dashed #e0e0e8; border-radius: 8px; padding: 12px; }
+.cv-composer .mini-login .input { margin-bottom: 8px; }
+.cv-actions-row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.cv-list { flex: 1; overflow-y: auto; padding: 10px 12px 16px; }
+.cv-thread-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.cv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.cv-chip-btn { border: 1px solid #d9d9e3; background: #fff; border-radius: 99px; padding: 3px 10px; font-size: 12px; color: #555; }
+.cv-chip-btn.on { border-color: var(--brand); background: #eef; color: var(--brand); }
+.cv-intent-row .el { margin-bottom: 4px; }
+
+/* 底部生成条 */
+.cv-basket { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 100;
+  display: flex; align-items: center; gap: 12px; background: #1a1a2e; color: #fff; font-size: 13px;
+  border-radius: 99px; padding: 10px 18px; box-shadow: 0 10px 34px rgba(20,20,50,.35); }
+
+@media (max-width: 860px) {
+  .cv-toolbar { top: 8px; padding: 6px 10px; gap: 6px; }
+  .cv-panel { left: 8px; right: 8px; width: auto; top: auto; height: 46%; bottom: 8px; }
+  .cv-basket { bottom: 48%; }
+}

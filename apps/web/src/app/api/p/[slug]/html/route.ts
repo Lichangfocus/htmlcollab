@@ -8,10 +8,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ slug: string }
   if (!page) return new Response('not found', { status: 404 })
 
   const v = await db
-    .prepare('SELECT html FROM versions WHERE page_id = ? ORDER BY number DESC LIMIT 1')
+    .prepare("SELECT id, html FROM versions WHERE page_id = ? AND kind = 'mainline' ORDER BY number DESC LIMIT 1")
     .bind(page.id)
-    .first<{ html: string }>()
+    .first<{ id: string; html: string }>()
   if (!v) return new Response('not found', { status: 404 })
 
-  return new Response(v.html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+  return new Response(v.html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Version-Id': v.id },
+  })
 }

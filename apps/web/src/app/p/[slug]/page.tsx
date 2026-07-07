@@ -1,8 +1,15 @@
 import { notFound } from 'next/navigation'
 import { getDb } from '@/lib/db'
-import Viewer from './viewer-client'
+import CanvasClient from './canvas-client'
 
-interface VersionMeta { id: string; number: number; created_at: string }
+export interface VersionInfo {
+  id: string
+  number: number
+  kind: string
+  base_version_id: string | null
+  pushed_by_name: string | null
+  created_at: string
+}
 
 export default async function PageView(props: {
   params: Promise<{ slug: string }>
@@ -19,21 +26,21 @@ export default async function PageView(props: {
   if (!page) notFound()
 
   const { results: versions } = await db
-    .prepare('SELECT id, number, created_at FROM versions WHERE page_id = ? ORDER BY number DESC')
+    .prepare('SELECT id, number, kind, base_version_id, pushed_by_name, created_at FROM versions WHERE page_id = ? ORDER BY number ASC')
     .bind(page.id)
-    .all<VersionMeta>()
+    .all<VersionInfo>()
   if (!versions.length) notFound()
 
-  const wanted = v ? parseInt(v, 10) : versions[0].number
-  const current = versions.find((x) => x.number === wanted) ?? versions[0]
+  const mainlines = versions.filter((x) => x.kind !== 'variant')
+  const wanted = v ? versions.find((x) => x.number === parseInt(v, 10)) : undefined
+  const initial = wanted ?? mainlines[mainlines.length - 1]
 
   return (
-    <Viewer
+    <CanvasClient
       slug={page.slug}
       title={page.title}
-      versions={versions.map((x) => ({ id: x.id, number: x.number }))}
-      current={{ id: current.id, number: current.number }}
-      isLatest={current.number === versions[0].number}
+      initialVersions={versions}
+      initialFocusId={initial.id}
     />
   )
 }

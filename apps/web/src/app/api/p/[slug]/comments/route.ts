@@ -21,7 +21,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
   const versionId = url.searchParams.get('version')
   const version = versionId
     ? await db.prepare('SELECT html FROM versions WHERE id = ? AND page_id = ?').bind(versionId, page.id).first<{ html: string }>()
-    : await db.prepare('SELECT html FROM versions WHERE page_id = ? ORDER BY number DESC LIMIT 1').bind(page.id).first<{ html: string }>()
+    : await db.prepare("SELECT html FROM versions WHERE page_id = ? AND kind = 'mainline' ORDER BY number DESC LIMIT 1").bind(page.id).first<{ html: string }>()
   if (!version) return json({ error: '版本不存在' }, 404)
 
   const { results: comments } = await db

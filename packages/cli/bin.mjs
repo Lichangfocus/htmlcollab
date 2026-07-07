@@ -90,14 +90,29 @@ async function push() {
     slug: flags.slug || projectCfg.slug,
     title: flags.title,
     notes: flags.notes,
+    // 并行冲突检测：base != 最新主线时服务端自动落为变体帧
+    base: flags.base || projectCfg.baseVersionId,
+    // 关联解决画布上的意图卡：--resolves id1,id2
+    resolves: flags.resolves ? flags.resolves.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
     html,
   })
 
   // 关键一步：把 instrument 后的 HTML 写回本地，评论锚点才能跨版本存活
   fs.writeFileSync(filePath, data.html)
-  writeJson(PROJECT_CFG, { server, slug: data.slug, file: path.relative(process.cwd(), filePath) })
+  writeJson(PROJECT_CFG, {
+    server,
+    slug: data.slug,
+    file: path.relative(process.cwd(), filePath),
+    baseVersionId: data.versionId,
+  })
 
-  console.log(`✓ 已发布 v${data.version}「${data.title}」（${data.anchors} 个可评论锚点）`)
+  if (data.kind === 'variant') {
+    console.log(`✓ 已发布为「变体」v${data.version}（检测到他人已先发布新主线，你的修改并排展示，未覆盖）`)
+    console.log(`  页面创建者可在画布上将其「设为主线」`)
+  } else {
+    console.log(`✓ 已发布 v${data.version}「${data.title}」（${data.anchors} 个可评论锚点）`)
+  }
+  if (data.resolved) console.log(`  已关联解决 ${data.resolved} 个意图卡`)
   console.log(`  协作链接: ${data.url}`)
   console.log(`  拉取反馈: npx htmlcollab-cli pull`)
 }
@@ -200,7 +215,7 @@ const HELP = `htmlcollab — HTML 在线协作
   htmlcollab install [--server url]     为当前项目的 agent 安装 skill/规则
   htmlcollab auth <token> [--server u]  激活（token 从网页 /activate 获取，一次性）
   htmlcollab login  [--email --name]    备用登录方式；无参时输出激活指引
-  htmlcollab push   [file] [--title t] [--slug s]   发布 / 更新版本
+  htmlcollab push   [file] [--title t] [--slug s] [--base 版本id] [--resolves id1,id2]   发布 / 更新版本
   htmlcollab pull                       拉取反馈上下文（给 agent 读）
   htmlcollab open                       浏览器打开协作链接
 
