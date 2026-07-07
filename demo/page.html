@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowNote — AI 会议纪要助手</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: #1a1a2e; background: #fff; }
+  .container { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; }
+  .logo { font-size: 20px; font-weight: 800; color: #4f46e5; }
+  .nav-links a { margin-left: 28px; color: #555; text-decoration: none; font-size: 14px; }
+  .hero { text-align: center; padding: 72px 0 56px; }
+  .hero h1 { font-size: 44px; line-height: 1.25; letter-spacing: -0.5px; }
+  .hero h1 span { color: #4f46e5; }
+  .hero p { margin: 20px auto 0; max-width: 560px; color: #666; font-size: 17px; line-height: 1.7; }
+  .cta { margin-top: 32px; }
+  .cta button { background: #4f46e5; color: #fff; border: 0; padding: 14px 36px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+  .cta button:hover { background: #4338ca; }
+  .cta .hint { margin-top: 10px; font-size: 13px; color: #999; }
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 40px 0 64px; }
+  .feature { border: 1px solid #ececf1; border-radius: 14px; padding: 26px; }
+  .feature .icon { font-size: 26px; }
+  .feature h3 { margin: 12px 0 8px; font-size: 17px; }
+  .feature p { color: #666; font-size: 14px; line-height: 1.65; }
+  .pricing { padding: 24px 0 72px; }
+  .pricing > h2 { text-align: center; font-size: 30px; margin-bottom: 8px; }
+  .pricing > .sub { text-align: center; color: #888; font-size: 14px; margin-bottom: 36px; }
+  .tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .tier { border: 1px solid #ececf1; border-radius: 14px; padding: 24px 20px; }
+  .tier.hot { border-color: #4f46e5; position: relative; }
+  .tier.hot::before { content: "最受欢迎"; position: absolute; top: -11px; left: 20px; background: #4f46e5; color: #fff; font-size: 11px; padding: 3px 10px; border-radius: 99px; }
+  .tier h4 { font-size: 15px; color: #555; }
+  .tier .price { font-size: 30px; font-weight: 800; margin: 10px 0 2px; }
+  .tier .price small { font-size: 13px; font-weight: 400; color: #999; }
+  .tier ul { list-style: none; margin: 16px 0; }
+  .tier li { font-size: 13px; color: #555; padding: 5px 0; }
+  .tier li::before { content: "✓ "; color: #4f46e5; }
+  .tier button { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #4f46e5; background: #fff; color: #4f46e5; font-weight: 600; cursor: pointer; }
+  .tier.hot button { background: #4f46e5; color: #fff; }
+  footer { border-top: 1px solid #ececf1; padding: 28px 0; text-align: center; color: #999; font-size: 13px; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <nav data-cc-id="cc-nav">
+      <div class="logo">◈ FlowNote</div>
+      <div class="nav-links"><a href="#">功能</a><a href="#">定价</a><a href="#">博客</a><a href="#">登录</a></div>
+    </nav>
+
+    <section class="hero">
+      <h1 data-cc-id="cc-hero-title">开完会 30 秒，<br>拿到<span>可以直接执行</span>的纪要</h1>
+      <p data-cc-id="cc-hero-sub">FlowNote 实时听录你的每一场会议，自动生成结构化纪要、待办清单和责任人分配，并同步到你的项目管理工具。支持飞书、钉钉、Zoom 和 Teams。</p>
+      <div class="cta" data-cc-id="cc-hero-cta">
+        <button onclick="this.textContent='✓ 已加入等待列表'">免费开始使用</button>
+        <div class="hint">无需信用卡 · 每月 10 场会议免费</div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="feature" data-cc-id="cc-feat-1">
+        <div class="icon">🎙️</div>
+        <h3>实时转写</h3>
+        <p>中英混说也能准确识别，说话人自动分离，专有名词可自定义词库。</p>
+      </div>
+      <div class="feature" data-cc-id="cc-feat-2">
+        <div class="icon">📋</div>
+        <h3>结构化纪要</h3>
+        <p>不是一大段文字流水账，而是决议、待办、风险、遗留问题的清晰分区。</p>
+      </div>
+      <div class="feature" data-cc-id="cc-feat-3">
+        <div class="icon">🔁</div>
+        <h3>工具同步</h3>
+        <p>待办事项一键推送到 Jira、Linear、飞书任务，责任人自动 @ 到人。</p>
+      </div>
+    </section>
+
+    <section class="pricing">
+      <h2 data-cc-id="cc-pricing-title">选择适合你的方案</h2>
+      <div class="sub" data-cc-id="cc-pricing-sub">按年付费可享 8 折优惠</div>
+      <div class="tiers">
+        <div class="tier" data-cc-id="cc-tier-free">
+          <h4>免费版</h4>
+          <div class="price">¥0<small>/月</small></div>
+          <ul><li>每月 10 场会议</li><li>基础转写</li><li>7 天历史记录</li></ul>
+          <button>开始使用</button>
+        </div>
+        <div class="tier" data-cc-id="cc-tier-basic">
+          <h4>基础版</h4>
+          <div class="price">¥29<small>/月</small></div>
+          <ul><li>每月 40 场会议</li><li>结构化纪要</li><li>30 天历史记录</li></ul>
+          <button>立即订阅</button>
+        </div>
+        <div class="tier hot" data-cc-id="cc-tier-pro">
+          <h4>专业版</h4>
+          <div class="price">¥79<small>/月</small></div>
+          <ul><li>无限会议</li><li>工具同步</li><li>自定义词库</li><li>无限历史</li></ul>
+          <button>立即订阅</button>
+        </div>
+        <div class="tier" data-cc-id="cc-tier-ent">
+          <h4>企业版</h4>
+          <div class="price">联系我们</div>
+          <ul><li>私有化部署</li><li>SSO 单点登录</li><li>专属客户成功</li></ul>
+          <button>预约演示</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer data-cc-id="cc-footer">
+    © 2026 FlowNote · 用你的 agent 运行 <code>npx htmlcollab init</code> 发布你自己的页面
+  </footer>
+</body>
+</html>

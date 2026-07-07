@@ -1,0 +1,27 @@
+{
+  "name": "web",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 4600",
+    "build": "next build",
+    "start": "next start -p 4600",
+    "db:local": "wrangler d1 migrations apply htmlcollab --local",
+    "db:remote": "wrangler d1 migrations apply htmlcollab --remote",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "preview:cf": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
+  },
+  "dependencies": {
+    "next": "^15.4.0",
+    "parse5": "^8.0.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.1",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.107.0"
+  }
+}

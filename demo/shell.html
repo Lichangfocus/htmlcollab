@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>htmlcollab · AI 落地页（demo）</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f4f4f7; }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #e5e5ec; }
+  .brand { font-weight: 800; color: #4f46e5; font-size: 15px; }
+  .title { font-size: 14px; color: #333; }
+  .badge-v { font-size: 11px; background: #eef; color: #4f46e5; padding: 2px 8px; border-radius: 99px; }
+  .spacer { flex: 1; }
+  button { cursor: pointer; font-family: inherit; }
+  .btn { border: 1px solid #d9d9e3; background: #fff; border-radius: 8px; padding: 7px 14px; font-size: 13px; color: #333; }
+  .btn:hover { border-color: #4f46e5; color: #4f46e5; }
+  .btn.primary { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+  .btn.primary.on { background: #dc2626; border-color: #dc2626; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #frame-wrap { flex: 1; padding: 14px; min-width: 0; }
+  iframe { width: 100%; height: 100%; border: 1px solid #e5e5ec; border-radius: 10px; background: #fff; }
+  aside { width: 340px; background: #fff; border-left: 1px solid #e5e5ec; display: flex; flex-direction: column; min-height: 0; }
+  aside h2 { font-size: 13px; color: #888; font-weight: 600; padding: 14px 16px 10px; }
+  #composer { padding: 0 16px 14px; border-bottom: 1px solid #f0f0f4; }
+  #composer .placeholder { font-size: 13px; color: #aaa; line-height: 1.6; background: #fafafc; border: 1px dashed #e0e0e8; border-radius: 8px; padding: 14px; }
+  .el-chip { display: inline-block; font-size: 12px; font-family: ui-monospace, monospace; background: #eef; color: #4f46e5; padding: 3px 8px; border-radius: 6px; margin-bottom: 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  textarea, input[type=text] { width: 100%; border: 1px solid #d9d9e3; border-radius: 8px; padding: 9px 10px; font-size: 13px; font-family: inherit; resize: vertical; }
+  textarea:focus, input:focus { outline: none; border-color: #4f46e5; }
+  #composer .row { display: flex; gap: 8px; margin-top: 8px; }
+  #composer input { flex: 1; }
+  #threads { flex: 1; overflow-y: auto; padding: 8px 12px 20px; }
+  .thread { border: 1px solid #ececf1; border-radius: 10px; padding: 12px; margin-bottom: 10px; cursor: pointer; }
+  .thread:hover { border-color: #c7c7f5; }
+  .thread.resolved { opacity: .55; }
+  .thread .el { font-size: 11px; font-family: ui-monospace, monospace; color: #4f46e5; background: #f4f4ff; padding: 2px 6px; border-radius: 5px; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg { margin-top: 8px; font-size: 13px; line-height: 1.55; }
+  .msg .meta { color: #999; font-size: 11px; margin-bottom: 2px; }
+  .msg.reply { margin-left: 14px; padding-left: 10px; border-left: 2px solid #ececf1; }
+  .thread .actions { display: flex; gap: 10px; margin-top: 10px; }
+  .link-btn { border: 0; background: none; font-size: 12px; color: #4f46e5; padding: 0; }
+  .link-btn.grey { color: #999; }
+  .reply-box { margin-top: 8px; }
+  .empty { text-align: center; color: #bbb; font-size: 13px; padding: 40px 0; }
+  .count { font-weight: 400; color: #bbb; }
+  @media (max-width: 860px) {
+    main { flex-direction: column; }
+    aside { width: 100%; border-left: 0; border-top: 1px solid #e5e5ec; height: 45%; flex: none; }
+    #frame-wrap { padding: 8px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="brand">◈ htmlcollab</span>
+    <span class="title">AI 落地页 <span class="badge-v">v1</span></span>
+    <span class="spacer"></span>
+    <button class="btn primary" id="mode-btn">💬 评论模式</button>
+    <button class="btn" onclick="window.open('/context','_blank')">🤖 Agent 上下文</button>
+  </header>
+  <main>
+    <div id="frame-wrap"><iframe id="frame" src="/raw"></iframe></div>
+    <aside>
+      <div id="composer">
+        <h2>发表评论</h2>
+        <div class="placeholder" id="composer-body">
+          开启右上角「评论模式」，然后在左侧页面中<b>点击任意元素块</b>即可评论 —— 就像在 Figma 里一样。
+        </div>
+      </div>
+      <h2>评论 <span class="count" id="count"></span></h2>
+      <div id="threads"><div class="empty">还没有评论</div></div>
+    </aside>
+  </main>
+
+<script>
+  const frame = document.getElementById('frame')
+  const modeBtn = document.getElementById('mode-btn')
+  const composerBody = document.getElementById('composer-body')
+  const threadsEl = document.getElementById('threads')
+  const countEl = document.getElementById('count')
+
+  let mode = false
+  let selected = null       // {ccId, tag, snippet}
+  let comments = []
+  let replyTo = null        // 展开回复框的顶层评论 id
+  let frameReady = false
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+  const toFrame = (msg) => frame.contentWindow.postMessage({ source: 'htmlcollab-shell', ...msg }, '*')
+  const fmt = (iso) => { const d = new Date(iso), p = (n) => String(n).padStart(2,'0'); return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}` }
+
+  // ---- 评论模式开关 ----
+  modeBtn.addEventListener('click', () => {
+    mode = !mode
+    modeBtn.textContent = mode ? '✕ 退出评论模式' : '💬 评论模式'
+    modeBtn.classList.toggle('on', mode)
+    toFrame({ type: 'mode', on: mode })
+    if (!mode) clearComposer()
+  })
+
+  // ---- iframe 消息 ----
+  window.addEventListener('message', (e) => {
+    const msg = e.data
+    if (msg?.source !== 'htmlcollab') return
+    if (msg.type === 'ready') { frameReady = true; pushBadges() }
+    if (msg.type === 'select') {
+      selected = msg
+      renderComposer()
+      // 从气泡进来时若未开评论模式，也展示该元素线程
+      document.querySelectorAll('.thread').forEach((t) => {
+        t.style.borderColor = t.dataset.ccId === msg.ccId ? '#4f46e5' : ''
+      })
+    }
+  })
+
+  // ---- 发表评论 ----
+  function renderComposer() {
+    if (!selected) return clearComposer()
+    composerBody.classList.remove('placeholder')
+    composerBody.innerHTML = `
+      <span class="el-chip">&lt;${esc(selected.tag)}&gt; ${esc(selected.snippet || selected.ccId)}</span>
+      <textarea id="c-body" rows="3" placeholder="对这个元素说点什么…（回车发送）"></textarea>
+      <div class="row">
+        <input type="text" id="c-author" placeholder="你的昵称" value="${esc(localStorage.ccName || '')}">
+        <button class="btn primary" id="c-send">发送</button>
+      </div>`
+    const body = document.getElementById('c-body')
+    body.focus()
+    body.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } })
+    document.getElementById('c-send').addEventListener('click', submit)
+  }
+
+  function clearComposer() {
+    selected = null
+    composerBody.classList.add('placeholder')
+    composerBody.innerHTML = '开启右上角「评论模式」，然后在左侧页面中<b>点击任意元素块</b>即可评论 —— 就像在 Figma 里一样。'
+    toFrame({ type: 'clearSelect' })
+  }
+
+  async function submit() {
+    const body = document.getElementById('c-body').value.trim()
+    const author = document.getElementById('c-author').value.trim()
+    if (!body) return
+    if (!author) return alert('填个昵称吧')
+    localStorage.ccName = author
+    await api('POST', '/api/comments', { ccId: selected.ccId, elementTag: selected.tag, elementSnippet: selected.snippet, body, author })
+    clearComposer()
+    refresh()
+  }
+
+  // ---- 线程列表 ----
+  function renderThreads() {
+    const tops = comments.filter((c) => !c.parentId).sort((a, b) => (a.status < b.status ? -1 : a.status > b.status ? 1 : b.createdAt.localeCompare(a.createdAt)))
+    const openCount = tops.filter((c) => c.status === 'open').length
+    countEl.textContent = tops.length ? `${openCount} 待处理 / ${tops.length} 总计` : ''
+    if (!tops.length) { threadsEl.innerHTML = '<div class="empty">还没有评论</div>'; return }
+
+    threadsEl.innerHTML = tops.map((c) => {
+      const replies = comments.filter((r) => r.parentId === c.id)
+      return `
+      <div class="thread ${c.status}" data-cc-id="${esc(c.ccId)}" data-id="${c.id}">
+        <span class="el">&lt;${esc(c.elementTag)}&gt; ${esc(c.elementSnippet || c.ccId)}</span>
+        <div class="msg"><div class="meta">${esc(c.author)} · ${fmt(c.createdAt)}</div>${esc(c.body)}</div>
+        ${replies.map((r) => `<div class="msg reply"><div class="meta">${esc(r.author)} · ${fmt(r.createdAt)}</div>${esc(r.body)}</div>`).join('')}
+        <div class="actions">
+          <button class="link-btn" data-act="reply">回复</button>
+          <button class="link-btn ${c.status === 'open' ? '' : 'grey'}" data-act="resolve">${c.status === 'open' ? '✓ 解决' : '重新打开'}</button>
+        </div>
+        ${replyTo === c.id ? `
+        <div class="reply-box">
+          <textarea id="r-body" rows="2" placeholder="回复…（回车发送）"></textarea>
+          <div class="row" style="display:flex;gap:8px;margin-top:6px">
+            <input type="text" id="r-author" placeholder="你的昵称" value="${esc(localStorage.ccName || '')}" style="flex:1">
+            <button class="btn primary" data-act="send-reply">发送</button>
+          </div>
+        </div>` : ''}
+      </div>`
+    }).join('')
+
+    threadsEl.querySelectorAll('.thread').forEach((el) => {
+      const id = el.dataset.id
+      const top = comments.find((c) => c.id === id)
+      el.addEventListener('click', (e) => {
+        const act = e.target.dataset?.act
+        if (act === 'reply') { replyTo = replyTo === id ? null : id; renderThreads(); return }
+        if (act === 'resolve') { api('POST', '/api/resolve', { id }).then(refresh); return }
+        if (act === 'send-reply') { sendReply(top); return }
+        if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return
+        toFrame({ type: 'scrollTo', ccId: top.ccId })
+      })
+      el.querySelector('#r-body')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(top) }
+      })
+    })
+  }
+
+  async function sendReply(top) {
+    const body = document.getElementById('r-body').value.trim()
+    const author = document.getElementById('r-author').value.trim()
+    if (!body) return
+    if (!author) return alert('填个昵称吧')
+    localStorage.ccName = author
+    await api('POST', '/api/comments', { parentId: top.id, body, author })
+    replyTo = null
+    refresh()
+  }
+
+  // ---- 数据 ----
+  const api = (method, url, data) => fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: data ? JSON.stringify(data) : undefined }).then((r) => r.json())
+
+  function pushBadges() {
+    if (!frameReady) return
+    const counts = {}
+    for (const c of comments.filter((c) => !c.parentId && c.status === 'open')) counts[c.ccId] = (counts[c.ccId] || 0) + 1
+    toFrame({ type: 'badges', items: Object.entries(counts).map(([ccId, count]) => ({ ccId, count })) })
+  }
+
+  async function refresh() {
+    comments = await api('GET', '/api/comments')
+    renderThreads()
+    pushBadges()
+  }
+
+  refresh()
+  setInterval(refresh, 3000) // demo 用轮询模拟多人同步
+</script>
+</body>
+</html>

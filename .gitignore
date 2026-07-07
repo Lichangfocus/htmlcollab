@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.open-next/
+.wrangler/
+apps/web/data/
+demo/data/
+*.log
+.DS_Store
+.htmlcollab.json
+next-env.d.ts
+cloudflare-env.d.ts
