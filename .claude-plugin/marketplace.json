@@ -1,0 +1,19 @@
+{
+  "name": "htmlcollab",
+  "owner": { "name": "Lichangfocus", "url": "https://github.com/Lichangfocus" },
+  "metadata": {
+    "description": "HTML 在线协作：agent 生成的页面一条命令在线化，元素级评论回流为 agent 上下文",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "htmlcollab",
+      "source": "./plugins/htmlcollab",
+      "description": "把 HTML 做成在线可协作页面；拉取评审反馈并按锚点修改；发布新版本",
+      "version": "0.1.0",
+      "author": { "name": "Lichangfocus" },
+      "homepage": "https://htmlcollab.lichangin.workers.dev",
+      "keywords": ["html", "collaboration", "review", "agent"]
+    }
+  ]
+}

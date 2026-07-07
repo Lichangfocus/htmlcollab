@@ -1,0 +1,7 @@
+{
+  "name": "htmlcollab",
+  "description": "HTML 在线协作：把 agent 生成的页面一条命令在线化，协作者选中元素评论，反馈回流为 agent 上下文",
+  "version": "0.1.0",
+  "author": { "name": "Lichangfocus" },
+  "homepage": "https://htmlcollab.lichangin.workers.dev"
+}

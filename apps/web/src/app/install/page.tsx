@@ -20,13 +20,22 @@ export default async function Install() {
       </p>
 
       <div className="quickstart" style={{ marginTop: 20 }}>
-        <h3>一条命令接入（Claude Code / Cursor / 任意 agent）</h3>
+        <h3>方式一 · Claude Code 安装 skill 插件（推荐）</h3>
+        <pre>{`/plugin marketplace add Lichangfocus/htmlcollab
+/plugin install htmlcollab@htmlcollab`}</pre>
+        <p style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
+          在 Claude Code 里执行以上两条命令即可。装好后是<b>全局生效</b>的 skill：
+          任何项目里说“把这个页面做成在线的”“处理这个页面的反馈”，agent 都会自动走 htmlcollab 协作循环。
+        </p>
+      </div>
+
+      <div className="quickstart" style={{ marginTop: 16 }}>
+        <h3>方式二 · 任意 agent，一条命令写入项目物料</h3>
         <pre>{`cd 你的项目目录
 npx htmlcollab install --server ${origin}`}</pre>
         <p style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
-          自动探测环境并写入：<code>.claude/skills/htmlcollab/SKILL.md</code>（Claude Code）、
+          自动探测环境并写入：<code>.claude/skills/htmlcollab/SKILL.md</code>（Claude Code 项目级）、
           <code>.cursor/rules/htmlcollab.mdc</code>（Cursor）、<code>AGENTS.md</code> 片段（其他 agent 通用）。
-          之后 agent 会在你表达“在线化 / 分享 / 收集反馈”等意图时自动使用 htmlcollab。
         </p>
       </div>
 
@@ -41,7 +50,7 @@ npx htmlcollab push                 # 发布 v2，评论自动跟随到新版本
       </div>
 
       <div className="quickstart" style={{ marginTop: 16 }}>
-        <h3>不方便装？直接把这段话发给 agent 也行</h3>
+        <h3>方式三 · 不装任何东西，把这段话发给 agent</h3>
         <pre>{`这个项目使用 htmlcollab 做 HTML 在线协作（服务地址 ${origin}）。
 - 发布/更新页面: npx htmlcollab push <file>
 - 拉取评审反馈: npx htmlcollab pull（输出含元素锚点的 markdown）

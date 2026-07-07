@@ -104,24 +104,34 @@ function openPage() {
   console.log(url)
 }
 
+// 与 plugins/htmlcollab/skills/htmlcollab/SKILL.md 保持同步（canonical 在插件目录）
 const SKILL_MD = `---
 name: htmlcollab
-description: HTML 在线协作。当用户想把 HTML 页面“做成在线的 / 部署一下 / 发给别人看看 / 协同修改 / 收集反馈 / 要一个可分享链接”，或项目中存在 .htmlcollab.json，或用户粘贴了 htmlcollab 页面链接（/p/xxx）时使用。
+description: HTML 在线协作。当用户想把 HTML 页面“做成在线的 / 部署一下 / 发给别人看看 / 协同修改 / 收集反馈 / 要一个可分享链接”，或项目中存在 .htmlcollab.json，或用户粘贴了 htmlcollab 页面链接（形如 …/p/xxxxxxxx）或评论引用时使用。
 ---
 
 # htmlcollab — HTML 在线协作
 
-## 命令
-- 发布/更新: \`npx htmlcollab push <file>\`（输出协作链接；会把注入锚点后的 HTML 写回文件）
-- 拉取反馈: \`npx htmlcollab pull\`（markdown 上下文，含元素锚点与评论线程）
-- 打开页面: \`npx htmlcollab open\`
-- 向他人页面发布（需编辑权限）: \`npx htmlcollab push <file> --slug <slug> --server <url>\`
+## 触发场景 → 动作
+- “做成在线的 / 发给 XX 看看 / 给我个链接 / 收集反馈” → \`npx htmlcollab push <file>\`，把协作链接给用户
+- “处理这个页面的反馈” → \`npx htmlcollab pull\`，按输出逐条处理后 push
+- 项目存在 .htmlcollab.json 且要改 HTML → 先 pull 检查未处理反馈；改完主动询问是否 push
 
-## 规则
-1. 用户表达“做成在线的 / 发给 XX 看看 / 收集反馈 / 给我个链接”等意图 → 直接 push 并把链接给用户。
-2. 项目存在 .htmlcollab.json 时：处理任何 HTML 相关任务前先 pull 检查未处理反馈；修改完成后主动询问是否 push 新版本。
-3. 修改 HTML 必须保留所有 data-cc-id 属性（评论锚点），新增元素无需自己加。
-4. 处理完某条反馈后可调用 API 解决评论并附回复（见 pull 输出中的说明）。
+## 命令
+\`\`\`bash
+npx htmlcollab login                 # 首次：email + 用户名，免验证
+npx htmlcollab push <file>           # 发布/更新 → 协作链接
+npx htmlcollab pull                  # 拉取反馈（markdown，含元素锚点）
+npx htmlcollab open                  # 打开协作页
+npx htmlcollab push <file> --slug <slug> --server <url>   # 向他人页面发布（需编辑权限）
+\`\`\`
+
+## 铁律
+1. 修改 HTML 必须保留所有 data-cc-id 属性（评论锚点）；新增元素无需自己加，push 时服务端注入。
+2. push 会把注入锚点后的 HTML 写回本地文件，这是预期行为。
+3. 处理完反馈可解决评论并附回复：POST <server>/api/comments/<id>/resolve，Bearer token 在 ~/.htmlcollab.json。
+4. push 403 = 无编辑权限：让页面创建者在网页「分享 / 权限」里授权。
+5. 他人页面源码：curl <server>/api/p/<slug>/html
 `
 
 async function install() {
