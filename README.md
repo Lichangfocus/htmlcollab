@@ -2,7 +2,10 @@
 
 agent 产出的 HTML 的协作评审层：本地 HTML 一键在线化 → 协作者选中元素评论 → 评论结构化回流给 agent（CLI / MCP），成为下一轮迭代的上下文。
 
-**在线服务**: https://htmlcollab.lichangin.workers.dev · **接入指引**: https://htmlcollab.lichangin.workers.dev/install
+**在线服务**: https://htmlcollab.lichangin.workers.dev
+
+**接入方式（对任何 agent 说一句话）**:
+> 帮我安装这个技能：https://htmlcollab.lichangin.workers.dev/install
 
 ## 核心循环
 

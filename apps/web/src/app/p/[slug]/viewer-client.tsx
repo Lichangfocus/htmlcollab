@@ -201,7 +201,7 @@ export default function Viewer({ slug, title, versions, current, isLatest }: Pro
       `   （需先 npx htmlcollab-cli login，且拥有该页面的编辑权限）`,
       `4. 全部反馈: npx htmlcollab-cli pull 或 ${origin}/api/p/${slug}/context`,
       ``,
-      `提示: 为 agent 一键安装 skill（之后无需再粘贴本说明）→ ${origin}/install`
+      `提示: 想让你的 agent 永久学会这套协作流程，对它说：帮我安装这个技能：${origin}/install`
     )
     return lines.join('\n')
   }
@@ -413,10 +413,10 @@ export default function Viewer({ slug, title, versions, current, isLatest }: Pro
             </p>
             <textarea className="input" rows={10} readOnly value={agentModal.text} onFocus={(e) => e.target.select()} />
             <div className="modal-tip">
-              💡 <b>推荐</b>：为你的 agent 安装 skill —— 打开{' '}
-              <a href="/install" target="_blank"><b>{typeof location !== 'undefined' ? location.host : ''}/install</b></a>{' '}
-              按指引一条命令完成。之后你只要说「处理这个页面的反馈」，agent 就会自动拉取评论并发布新版本，
-              不用再手动复制。
+              💡 <b>推荐</b>：对你的 agent 说一句话——
+              <code>帮我安装这个技能：{typeof location !== 'undefined' ? location.origin : ''}/install</code>
+              ——它会自动完成接入。之后你只要说「处理这个页面的反馈」，agent 就会自动拉取评论并发布新版本，
+              不用再手动复制。<a href="/install" target="_blank">详情</a>
             </div>
             <div className="row" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button className="btn primary" onClick={() => setAgentModal(null)}>我知道了</button>
