@@ -119,7 +119,7 @@ description: HTML 在线协作。当用户想把 HTML 页面“做成在线的 /
 
 ## 命令
 \`\`\`bash
-npx htmlcollab-cli login                 # 首次：email + 用户名，免验证
+npx htmlcollab-cli login --email <邮箱> --name <用户名>  # 首次；不带参数是交互式提问，agent 环境务必带 flags
 npx htmlcollab-cli push <file>           # 发布/更新 → 协作链接
 npx htmlcollab-cli pull                  # 拉取反馈（markdown，含元素锚点）
 npx htmlcollab-cli open                  # 打开协作页
