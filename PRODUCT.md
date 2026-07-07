@@ -111,6 +111,8 @@
 
 > 格式建议：`- [ ] 功能名 —— 一句话价值 / 触发它的用户场景`（讨论后再展开成设计）
 
+- [ ] **无限画布协同（P0+P1，已定稿待实现）** —— 画布容器承载人-人/人-agent 协同：版本帧时间轴、实时便签与 presence、意图卡-指令闭环、并行 push 自动变体。完整 spec 见 [docs/04-canvas-design.md](docs/04-canvas-design.md)
+
 - [ ] raw 独立子域安全隔离（M4 安全模型全量落地，开放推广前置项）
 - [ ] 模糊 remap：ccId 丢失时按 tag+文本相似度重锚定
 - [ ] MCP server 模式（`htmlcollab mcp`）：list/get/push/resolve 四工具
