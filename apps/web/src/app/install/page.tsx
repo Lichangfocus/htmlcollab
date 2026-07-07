@@ -44,13 +44,17 @@ export default async function Install() {
 
 2. 读取写入的技能文件，掌握完整工作流。
 
-3. 告诉用户安装完成，之后只需说：
+3. 激活账号（一次性）：若 ~/.htmlcollab.json 无 apiToken——
+   把注册链接发给用户: ${origin}/activate
+   用户完成后会粘贴回一条 npx htmlcollab-cli auth … 指令，
+   原样执行它，确认「✓ 已激活」。此后永不需要再登录。
+
+4. 告诉用户安装+激活完成，之后只需说：
    「把这个页面做成在线的」→ 你发布并给出协作链接
    「处理这个页面的反馈」  → 你拉取评论、修改、发新版本
 
 完整机读版协议: ${origin}/install.md
-关键约定: 修改 HTML 必须保留所有 data-cc-id 属性（评论锚点）；
-login 必须带 --email --name（先向用户询问），否则会交互式挂起。`}</pre>
+关键约定: 修改 HTML 必须保留所有 data-cc-id 属性（评论锚点）。`}</pre>
       </div>
 
       <details style={{ marginTop: 20 }}>

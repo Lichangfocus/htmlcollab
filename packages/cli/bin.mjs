@@ -3,7 +3,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import readline from 'node:readline/promises'
 import { spawn } from 'node:child_process'
 
 const GLOBAL_CFG = path.join(os.homedir(), '.htmlcollab.json')
@@ -49,16 +48,35 @@ async function api(method, url, body, auth = true) {
 }
 
 async function login() {
-  let { email, name } = flags
+  const { email, name } = flags
   if (!email || !name) {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    email = email || (await rl.question('邮箱: '))
-    name = name || (await rl.question('用户名: '))
-    rl.close()
+    // 无参数 = 走网页激活流程（agent 环境不能交互提问）
+    console.log('请完成网页激活（一次性，约 20 秒）：')
+    console.log(`  1. 打开这个链接注册/登录: ${server}/activate`)
+    console.log('  2. 页面会给出一条 `npx htmlcollab-cli auth …` 指令，把它粘贴回来执行即完成激活')
+    console.log('（给 agent 的提示：把上面的链接发给用户，等用户粘贴回指令后执行它）')
+    return
   }
   const data = await api('POST', '/api/auth/cli-login', { email, name }, false)
   writeJson(GLOBAL_CFG, { ...globalCfg, server, apiToken: data.apiToken, email: data.email, name: data.name })
   console.log(`✓ 已登录 ${data.name} <${data.email}>（配置保存在 ~/.htmlcollab.json）`)
+}
+
+/** 网页激活回粘的指令：htmlcollab auth <token> --server <url> */
+async function auth() {
+  const t = positional[0] || flags.token
+  if (!t) die('用法: npx htmlcollab-cli auth <token> [--server url]（token 从网页 /activate 获取）')
+  let res
+  try {
+    res = await fetch(`${server}/api/me`, { headers: { Authorization: `Bearer ${t}` } })
+  } catch {
+    die(`无法连接服务器 ${server}`)
+  }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || !data.user) die('token 无效，请重新打开 /activate 获取')
+  writeJson(GLOBAL_CFG, { ...globalCfg, server, apiToken: t, email: data.user.email, name: data.user.name })
+  console.log(`✓ 已激活 ${data.user.name} <${data.user.email}>`)
+  console.log('  凭证已保存到 ~/.htmlcollab.json，之后所有命令自动携带，无需再登录。')
 }
 
 async function push() {
@@ -117,9 +135,15 @@ description: HTML 在线协作。当用户想把 HTML 页面“做成在线的 /
 - “处理这个页面的反馈” → \`npx htmlcollab-cli pull\`，按输出逐条处理后 push
 - 项目存在 .htmlcollab.json 且要改 HTML → 先 pull 检查未处理反馈；改完主动询问是否 push
 
+## 首次激活（安装后只做一次）
+1. 检查 ~/.htmlcollab.json 是否已有 apiToken，有则跳过。
+2. 没有：把激活链接发给用户让 TA 打开注册：<server>/activate
+3. 用户会粘贴回一条 \`npx htmlcollab-cli auth <token> --server <url>\` 指令，执行它。
+之后所有命令自动携带凭证，永远无需再登录。
+
 ## 命令
 \`\`\`bash
-npx htmlcollab-cli login --email <邮箱> --name <用户名>  # 首次；不带参数是交互式提问，agent 环境务必带 flags
+npx htmlcollab-cli auth <token> --server <url>          # 激活（token 来自网页 /activate）
 npx htmlcollab-cli push <file>           # 发布/更新 → 协作链接
 npx htmlcollab-cli pull                  # 拉取反馈（markdown，含元素锚点）
 npx htmlcollab-cli open                  # 打开协作页
@@ -159,21 +183,30 @@ async function install() {
   }
   if (flags.server) writeJson(GLOBAL_CFG, { ...globalCfg, server: flags.server })
   console.log(`✓ 已安装 agent 物料: ${wrote.join('、') || '(均已存在)'}`)
+  if (!globalCfg.apiToken) {
+    console.log('')
+    console.log('▶ 下一步 · 激活账号（一次性，给 agent 的指令）：')
+    console.log(`  把这个链接发给用户，让 TA 打开完成注册/登录: ${server}/activate`)
+    console.log('  用户会粘贴回一条 `npx htmlcollab-cli auth …` 指令，执行它即完成激活。')
+  } else {
+    console.log('  已检测到激活凭证，可直接使用。')
+  }
   console.log('  之后对你的 agent 说“把这个页面做成在线的”或“处理这个页面的反馈”即可自动触发。')
 }
 
 const HELP = `htmlcollab — HTML 在线协作
 
 用法:
-  htmlcollab login   [--email x --name y --server url]   登录（免验证）
-  htmlcollab push    [file] [--title 标题] [--slug s]    发布 / 更新版本
-  htmlcollab pull                                        拉取反馈上下文（给 agent 读）
-  htmlcollab open                                        浏览器打开协作链接
-  htmlcollab install [--server url]                      为当前项目的 agent 安装 skill/规则
+  htmlcollab install [--server url]     为当前项目的 agent 安装 skill/规则
+  htmlcollab auth <token> [--server u]  激活（token 从网页 /activate 获取，一次性）
+  htmlcollab login  [--email --name]    备用登录方式；无参时输出激活指引
+  htmlcollab push   [file] [--title t] [--slug s]   发布 / 更新版本
+  htmlcollab pull                       拉取反馈上下文（给 agent 读）
+  htmlcollab open                       浏览器打开协作链接
 
 给 agent 的提示: pull 输出的 markdown 包含元素锚点与修改约定，
 按其处理反馈后再次 push 即完成一轮协作循环。`
 
-const commands = { login, push, pull, open: openPage, install }
+const commands = { login, auth, push, pull, open: openPage, install }
 if (!cmd || !commands[cmd]) { console.log(HELP); process.exit(cmd ? 1 : 0) }
 await commands[cmd]()
