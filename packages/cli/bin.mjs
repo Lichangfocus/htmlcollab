@@ -32,7 +32,7 @@ const die = (msg) => { console.error(`✗ ${msg}`); process.exit(1) }
 async function api(method, url, body, auth = true) {
   const headers = { 'Content-Type': 'application/json' }
   if (auth) {
-    if (!globalCfg.apiToken) die('未登录，先运行: npx htmlcollab login')
+    if (!globalCfg.apiToken) die('未登录，先运行: npx htmlcollab-cli login')
     headers.Authorization = `Bearer ${globalCfg.apiToken}`
   }
   let res
@@ -81,11 +81,11 @@ async function push() {
 
   console.log(`✓ 已发布 v${data.version}「${data.title}」（${data.anchors} 个可评论锚点）`)
   console.log(`  协作链接: ${data.url}`)
-  console.log(`  拉取反馈: npx htmlcollab pull`)
+  console.log(`  拉取反馈: npx htmlcollab-cli pull`)
 }
 
 async function pull() {
-  if (!projectCfg.slug) die('当前目录还没发布过页面，先运行: npx htmlcollab push <file>')
+  if (!projectCfg.slug) die('当前目录还没发布过页面，先运行: npx htmlcollab-cli push <file>')
   let res
   try {
     res = await fetch(`${server}/api/p/${projectCfg.slug}/context`)
@@ -113,17 +113,17 @@ description: HTML 在线协作。当用户想把 HTML 页面“做成在线的 /
 # htmlcollab — HTML 在线协作
 
 ## 触发场景 → 动作
-- “做成在线的 / 发给 XX 看看 / 给我个链接 / 收集反馈” → \`npx htmlcollab push <file>\`，把协作链接给用户
-- “处理这个页面的反馈” → \`npx htmlcollab pull\`，按输出逐条处理后 push
+- “做成在线的 / 发给 XX 看看 / 给我个链接 / 收集反馈” → \`npx htmlcollab-cli push <file>\`，把协作链接给用户
+- “处理这个页面的反馈” → \`npx htmlcollab-cli pull\`，按输出逐条处理后 push
 - 项目存在 .htmlcollab.json 且要改 HTML → 先 pull 检查未处理反馈；改完主动询问是否 push
 
 ## 命令
 \`\`\`bash
-npx htmlcollab login                 # 首次：email + 用户名，免验证
-npx htmlcollab push <file>           # 发布/更新 → 协作链接
-npx htmlcollab pull                  # 拉取反馈（markdown，含元素锚点）
-npx htmlcollab open                  # 打开协作页
-npx htmlcollab push <file> --slug <slug> --server <url>   # 向他人页面发布（需编辑权限）
+npx htmlcollab-cli login                 # 首次：email + 用户名，免验证
+npx htmlcollab-cli push <file>           # 发布/更新 → 协作链接
+npx htmlcollab-cli pull                  # 拉取反馈（markdown，含元素锚点）
+npx htmlcollab-cli open                  # 打开协作页
+npx htmlcollab-cli push <file> --slug <slug> --server <url>   # 向他人页面发布（需编辑权限）
 \`\`\`
 
 ## 铁律

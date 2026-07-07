@@ -52,10 +52,10 @@
 2. `resolve_comment` 支持附回复（"已按建议改为三档定价"），评审者在网页端能看到 agent 的答复。
 3. `htmlcollab install`：探测环境写入对应生态物料——`.claude/`（skill + MCP 注册）、`.cursor/rules`、兜底 AGENTS.md 片段；三份物料从同一份源文件生成。
 4. **触发文案打磨**（§11.1）：物料中的触发描述穷举用户自然表达（"做成在线的 / 发给 XX 看看 / 收集反馈 / 给我个链接"…），并写入项目内信号规则——存在 `.htmlcollab.json` 时改 HTML 前先 pull、改完主动提议 push。
-5. `pull` 输出自描述化：头部含闭环指令（"处理完毕运行 `npx htmlcollab push`"），保证陌生 agent 无配置也能走通循环。
+5. `pull` 输出自描述化：头部含闭环指令（"处理完毕运行 `npx htmlcollab-cli push`"），保证陌生 agent 无配置也能走通循环。
 6. 写一份 `docs/agent-guide.md`：各主流 agent（Claude Code / Cursor / Codex CLI）的接入方式 + 推荐工作流提示词。
 
-验收：三条——① Claude Code 里说"拉取落地页的反馈并逐条处理"，agent 经 MCP 全自主闭环；② 未配置的 agent（如 Codex CLI）仅靠 `npx htmlcollab pull` 输出也能闭环；③ **触发测试**：在装过 install 物料的环境里只说"这个页面发给老板看看、让他能提意见"（不提工具名），agent 自动 push 并给出链接。
+验收：三条——① Claude Code 里说"拉取落地页的反馈并逐条处理"，agent 经 MCP 全自主闭环；② 未配置的 agent（如 Codex CLI）仅靠 `npx htmlcollab-cli pull` 输出也能闭环；③ **触发测试**：在装过 install 物料的环境里只说"这个页面发给老板看看、让他能提意见"（不提工具名），agent 自动 push 并给出链接。
 
 ## M4 — 上线打磨（3~5 天）
 
@@ -64,8 +64,8 @@
 任务：
 1. 生产部署：Vercel（或 Fly.io）+ Postgres（Neon/Supabase）；`raw` 独立子域 + CSP + sandbox 收紧（§6 安全模型全量落地）。
 2. 上传限制、速率限制、基础反滥用。
-3. 首页：产品说明 + `npx htmlcollab push` 快速开始；空状态、加载态、移动端评审可用（至少只读 + 评论）。
-4. **病毒页脚**：每个发布页角落加一行"用你的 agent 运行 `npx htmlcollab init` 发布你自己的页面"——评审者即潜在创作者（§11.1 冷启动）。
+3. 首页：产品说明 + `npx htmlcollab-cli push` 快速开始；空状态、加载态、移动端评审可用（至少只读 + 评论）。
+4. **病毒页脚**：每个发布页角落加一行"用你的 agent 运行 `npx htmlcollab-cli init` 发布你自己的页面"——评审者即潜在创作者（§11.1 冷启动）。
 5. 遥测：北极星事件埋点（push / first_comment / pull / repush / footer_click）。
 6. 发布：npm 发 CLI 包，写 README，上架 Claude Code 插件市场 / MCP registry / Cursor 目录；找 5~10 个用 Claude Code 的朋友跑真实场景。
 

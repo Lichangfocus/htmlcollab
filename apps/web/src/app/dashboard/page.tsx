@@ -82,9 +82,9 @@ export default function Dashboard() {
           <div className="quickstart">
             <h3>用你的 agent 发布页面</h3>
             <pre>{`# 项目目录里执行（或直接告诉你的 agent“把这个页面做成在线可协作的”）
-npx htmlcollab login --email ${me.email} --name ${me.name} --server ${typeof location !== 'undefined' ? location.origin : ''}
-npx htmlcollab push index.html    # 发布 / 更新版本
-npx htmlcollab pull               # 拉取反馈给 agent`}</pre>
+npx htmlcollab-cli login --email ${me.email} --name ${me.name} --server ${typeof location !== 'undefined' ? location.origin : ''}
+npx htmlcollab-cli push index.html    # 发布 / 更新版本
+npx htmlcollab-cli pull               # 拉取反馈给 agent`}</pre>
             <p style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
               API Token：<span className="token">{me.apiToken}</span>（CLI 登录后自动保存，无需手动配置）
             </p>

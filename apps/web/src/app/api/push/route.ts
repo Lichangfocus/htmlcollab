@@ -11,7 +11,7 @@ interface PageRow { id: string; slug: string; title: string; owner_id: string }
 /** 发布入口（CLI / agent）：无 slug 创建新页面，有 slug 追加版本 */
 export async function POST(req: Request) {
   const user = await anyUser(req)
-  if (!user) return json({ error: '未登录：先运行 npx htmlcollab login' }, 401)
+  if (!user) return json({ error: '未登录：先运行 npx htmlcollab-cli login' }, 401)
 
   const body = await req.json().catch(() => null)
   const html: string | undefined = body?.html

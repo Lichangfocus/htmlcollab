@@ -1,5 +1,5 @@
 {
-  "name": "htmlcollab",
+  "name": "htmlcollab-cli",
   "version": "0.1.0",
   "description": "把 agent 生成的 HTML 一条命令在线化：协作者选中元素评论，反馈回流为 agent 上下文",
   "type": "module",

@@ -15,9 +15,9 @@ export default async function Landing() {
       </p>
       <pre>
         <span className="c"># 在你的 agent 项目里</span>{'\n'}
-        npx htmlcollab login{'\n'}
-        npx htmlcollab push index.html   <span className="c"># → 得到协作链接</span>{'\n'}
-        npx htmlcollab pull              <span className="c"># → 反馈回流给 agent</span>
+        npx htmlcollab-cli login{'\n'}
+        npx htmlcollab-cli push index.html   <span className="c"># → 得到协作链接</span>{'\n'}
+        npx htmlcollab-cli pull              <span className="c"># → 反馈回流给 agent</span>
       </pre>
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
         {user ? (

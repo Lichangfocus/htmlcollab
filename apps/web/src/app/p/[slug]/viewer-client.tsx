@@ -197,9 +197,9 @@ export default function Viewer({ slug, title, versions, current, isLatest }: Pro
       `操作步骤:`,
       `1. 获取页面完整源码: curl ${origin}/api/p/${slug}/html -o page.html（若本地已有此项目源文件则直接改源文件）`,
       `2. 修改时保留所有 data-cc-id 属性（它们是评论锚点）`,
-      `3. 发布新版本: npx htmlcollab push page.html --slug ${slug} --server ${origin}`,
-      `   （需先 npx htmlcollab login，且拥有该页面的编辑权限）`,
-      `4. 全部反馈: npx htmlcollab pull 或 ${origin}/api/p/${slug}/context`,
+      `3. 发布新版本: npx htmlcollab-cli push page.html --slug ${slug} --server ${origin}`,
+      `   （需先 npx htmlcollab-cli login，且拥有该页面的编辑权限）`,
+      `4. 全部反馈: npx htmlcollab-cli pull 或 ${origin}/api/p/${slug}/context`,
       ``,
       `提示: 为 agent 一键安装 skill（之后无需再粘贴本说明）→ ${origin}/install`
     )

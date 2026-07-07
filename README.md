@@ -35,17 +35,17 @@ pnpm dev        # http://localhost:4600
 
 ```bash
 # 1. 发布（agent 项目目录里）
-npx htmlcollab login             # email + 用户名，免验证
-npx htmlcollab push index.html   # → 协作链接；instrument 后的 HTML 写回本地（锚点存活的关键）
+npx htmlcollab-cli login             # email + 用户名，免验证
+npx htmlcollab-cli push index.html   # → 协作链接；instrument 后的 HTML 写回本地（锚点存活的关键）
 
 # 2. 协作：把链接发给任何人，网页上选元素评论
 #    （标题/段落/图片/按钮/li 级细粒度，可一键“选父级”扩大选区）
 
 # 3. 回流
-npx htmlcollab pull              # → markdown 反馈上下文，agent 按其修改后再 push
+npx htmlcollab-cli pull              # → markdown 反馈上下文，agent 按其修改后再 push
 ```
 
-开发期 CLI 未发 npm，用 `node packages/cli/bin.mjs <cmd>` 代替 `npx htmlcollab <cmd>`。
+开发期 CLI 未发 npm，用 `node packages/cli/bin.mjs <cmd>` 代替 `npx htmlcollab-cli <cmd>`。
 
 ## 文档
 

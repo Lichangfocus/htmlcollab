@@ -221,7 +221,7 @@ html-collab/
 ```
 ┌ 生态物料层   SKILL.md / .cursor/rules / AGENTS.md 片段（从同一源文件生成，纯说明书）
 ├ 协议增强层   htmlcollab mcp（stdio MCP server，支持 MCP 的 agent 用）
-├ 通用适配层   npx htmlcollab CLI ← 主入口：所有能跑 shell 的 agent 的最大公约数，免安装免配置
+├ 通用适配层   npx htmlcollab-cli CLI ← 主入口：所有能跑 shell 的 agent 的最大公约数，免安装免配置
 └ 能力本体     HTTP API（/context 直接输出 agent 可读 markdown，没有 shell 的网页 agent 也能消费）
 ```
 
@@ -231,7 +231,7 @@ html-collab/
 - MCP 覆盖广但有注册摩擦 → 作为深度集成增强，不作唯一入口。
 
 自描述与自传播设计：
-1. **`pull` 输出即使用手册**：上下文 markdown 头部写明 data-cc-id 保留约定 + "处理完毕运行 `npx htmlcollab push` 发布新版本"，任何 agent 读到反馈的同时学会闭环。
+1. **`pull` 输出即使用手册**：上下文 markdown 头部写明 data-cc-id 保留约定 + "处理完毕运行 `npx htmlcollab-cli push` 发布新版本"，任何 agent 读到反馈的同时学会闭环。
 2. **`htmlcollab install`**：探测环境（`.claude/` → 写 skill + 注册 MCP；`.cursor/` → 写 rules；兜底 → AGENTS.md 片段），一条命令完成生态适配。
 3. **协议公开**：跨 agent 的真正契约是三样东西——上下文 markdown 格式、data-cc-id 保留约定、`.htmlcollab.json` 配置文件。任何 agent 不经 CLI 直接调 API 也能参与循环。
 
@@ -253,11 +253,11 @@ html-collab/
 ```markdown
 # HTML 在线协作（htmlcollab）
 - 用户表达"做成在线的 / 发给别人看 / 协同 / 收集反馈 / 要个链接"等意图时，
-  运行 `npx htmlcollab push <file>`，把返回链接交给用户。
-- 项目中存在 .htmlcollab.json 时：处理 HTML 相关任务前先 `npx htmlcollab pull`
+  运行 `npx htmlcollab-cli push <file>`，把返回链接交给用户。
+- 项目中存在 .htmlcollab.json 时：处理 HTML 相关任务前先 `npx htmlcollab-cli pull`
   检查未处理反馈；完成修改后主动询问是否发布新版本。
 ```
 
 冷启动（agent 从未接触过本产品）无法凭空解决，靠分发压缩首次接触成本：
 - 上架 Claude Code 插件市场、MCP registry、Cursor 目录；
-- **病毒循环**：每个发布页页脚带一行"用你的 agent 运行 `npx htmlcollab init` 发布你自己的页面"——评审者即潜在创作者，看一次页面即完成首次接触。
+- **病毒循环**：每个发布页页脚带一行"用你的 agent 运行 `npx htmlcollab-cli init` 发布你自己的页面"——评审者即潜在创作者，看一次页面即完成首次接触。

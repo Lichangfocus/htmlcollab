@@ -32,7 +32,7 @@ export default async function Install() {
       <div className="quickstart" style={{ marginTop: 16 }}>
         <h3>方式二 · 任意 agent，一条命令写入项目物料</h3>
         <pre>{`cd 你的项目目录
-npx htmlcollab install --server ${origin}`}</pre>
+npx htmlcollab-cli install --server ${origin}`}</pre>
         <p style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
           自动探测环境并写入：<code>.claude/skills/htmlcollab/SKILL.md</code>（Claude Code 项目级）、
           <code>.cursor/rules/htmlcollab.mdc</code>（Cursor）、<code>AGENTS.md</code> 片段（其他 agent 通用）。
@@ -41,21 +41,21 @@ npx htmlcollab install --server ${origin}`}</pre>
 
       <div className="quickstart" style={{ marginTop: 16 }}>
         <h3>协作循环长这样</h3>
-        <pre>{`npx htmlcollab login                # 首次：email + 用户名，免验证
-npx htmlcollab push index.html      # 发布 → 得到协作链接，发给任何人
+        <pre>{`npx htmlcollab-cli login                # 首次：email + 用户名，免验证
+npx htmlcollab-cli push index.html      # 发布 → 得到协作链接，发给任何人
 # …协作者在页面上选中元素评论（无需安装任何东西）…
-npx htmlcollab pull                 # 反馈变成 markdown 上下文，agent 直接读
+npx htmlcollab-cli pull                 # 反馈变成 markdown 上下文，agent 直接读
 # agent 修改 HTML（保留 data-cc-id 锚点）后：
-npx htmlcollab push                 # 发布 v2，评论自动跟随到新版本`}</pre>
+npx htmlcollab-cli push                 # 发布 v2，评论自动跟随到新版本`}</pre>
       </div>
 
       <div className="quickstart" style={{ marginTop: 16 }}>
         <h3>方式三 · 不装任何东西，把这段话发给 agent</h3>
         <pre>{`这个项目使用 htmlcollab 做 HTML 在线协作（服务地址 ${origin}）。
-- 发布/更新页面: npx htmlcollab push <file>
-- 拉取评审反馈: npx htmlcollab pull（输出含元素锚点的 markdown）
+- 发布/更新页面: npx htmlcollab-cli push <file>
+- 拉取评审反馈: npx htmlcollab-cli pull（输出含元素锚点的 markdown）
 - 修改 HTML 时必须保留所有 data-cc-id 属性（评论锚点）
-- 向他人页面发布需要编辑权限: npx htmlcollab push <file> --slug <slug> --server ${origin}`}</pre>
+- 向他人页面发布需要编辑权限: npx htmlcollab-cli push <file> --slug <slug> --server ${origin}`}</pre>
       </div>
 
       <p style={{ margin: '24px 0', fontSize: 13 }}>

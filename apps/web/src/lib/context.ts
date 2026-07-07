@@ -54,7 +54,7 @@ export function buildContext(page: PageMeta, version: VersionMeta, comments: Com
     `## 修改约定（给 agent 的指令）`,
     `1. 修改 HTML 时必须保留所有 \`data-cc-id\` 属性 —— 它们是评论的锚点，删除会导致反馈丢失定位。新增元素不需要自己加。`,
     `2. 逐条处理下方“待处理反馈”，可合并处理同一元素上的多条意见。`,
-    `3. 处理完毕后运行 \`npx htmlcollab push\` 发布新版本，评审者会在同一链接看到 v${version.number + 1}。`,
+    `3. 处理完毕后运行 \`npx htmlcollab-cli push\` 发布新版本，评审者会在同一链接看到 v${version.number + 1}。`,
     ``,
     `## 待处理反馈 (${open.length})`,
     ``,
