@@ -11,7 +11,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ slug: string }
   await sweepClaims(db, canvas.id)
   const objects = (await getObjects(db, canvas.id)).filter((o) => !o.deleted)
   const { results: versions } = await db
-    .prepare('SELECT id, number, kind, base_version_id, pushed_by_name, created_at FROM versions WHERE page_id = ? ORDER BY number ASC')
+    .prepare('SELECT id, number, kind, base_version_id, pushed_by_name, created_at, notes, changes FROM versions WHERE page_id = ? ORDER BY number ASC')
     .bind(page.id)
     .all()
   const maxSeq = objects.reduce((m, o) => Math.max(m, o.seq), 0)

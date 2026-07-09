@@ -44,9 +44,15 @@ interface Comment {
   anchored?: boolean
 }
 
-interface Selected { ccId: string; tag: string; snippet: string; html?: string }
+interface Rect { x: number; y: number; w: number; h: number }
+interface Selected { ccId: string; tag: string; snippet: string; html?: string; rect?: Rect }
 interface Me { id: string; name: string; email: string }
 interface Presence { user_id: string; name: string; color: string; x: number; y: number }
+interface Changes {
+  added: { id: string; tag: string; text?: string }[]
+  removed: { id: string; tag: string; text?: string }[]
+  modified: { id: string; tag: string; from?: string; to?: string }[]
+}
 type Role = 'owner' | 'editor' | 'commenter' | 'anon'
 
 /* ================= 常量 & 工具 ================= */
@@ -54,11 +60,12 @@ type Role = 'owner' | 'editor' | 'commenter' | 'anon'
 const FW = 1280, FH = 800, BAR = 40, GX = 220, GY = 140
 const MIN_Z = 0.04, MAX_Z = 2
 const LIVE_MIN_Z = 0.3, LIVE_LIMIT = 3
+const PANEL_W = 340
 
 const INTENT_TYPES: [string, string][] = [
   ['copy', '改文案'], ['style', '调样式'], ['layout', '调布局'], ['rewrite', '重写'], ['remove', '删除'], ['other', '其他'],
 ]
-const intentLabel = (t?: string) => INTENT_TYPES.find(([k]) => k === t)?.[1] ?? '意图'
+const intentLabel = (t?: string) => INTENT_TYPES.find(([k]) => k === t)?.[1] ?? '修改'
 
 const fmt = (iso: string) => {
   const d = new Date(iso)
@@ -67,6 +74,18 @@ const fmt = (iso: string) => {
 }
 const pj = <T,>(s: string | null | undefined, fallback: T): T => {
   try { return s ? JSON.parse(s) : fallback } catch { return fallback }
+}
+const parseChanges = (s: string | null): Changes | null => {
+  const c = pj<Changes | null>(s, null)
+  return c && (c.added || c.removed || c.modified) ? c : null
+}
+const changesSummary = (c: Changes | null) => {
+  if (!c) return ''
+  return [
+    c.modified?.length ? `修改 ${c.modified.length}` : '',
+    c.added?.length ? `新增 ${c.added.length}` : '',
+    c.removed?.length ? `删除 ${c.removed.length}` : '',
+  ].filter(Boolean).join(' · ')
 }
 
 interface FramePos { v: VersionInfo; x: number; y: number }
@@ -79,7 +98,6 @@ function layoutFrames(versions: VersionInfo[]): FramePos[] {
   const frames: FramePos[] = mains.map((v, i) => ({ v, x: i * (FW + GX), y: 0 }))
   const stack = new Map<number, number>()
   for (const v of versions.filter((x) => x.kind === 'variant').sort((a, b) => a.number - b.number)) {
-    // 找最近的主线祖先列
     let cur: VersionInfo | undefined = v
     let guard = 0
     while (cur && cur.kind === 'variant' && guard++ < 20) cur = cur.base_version_id ? byId.get(cur.base_version_id) : undefined
@@ -109,21 +127,28 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
   const [mode, setMode] = useState(false)
   const [selected, setSelected] = useState<Selected | null>(null)
 
-  /* ---- 面板 / 弹层态 ---- */
-  const [panelTab, setPanelTab] = useState<'comments' | 'intents'>('comments')
+  /* ---- 标注弹窗（原位） ---- */
+  const [popMode, setPopMode] = useState<'comment' | 'intent'>('comment')
+  const [popText, setPopText] = useState('')
+  const [popIntentType, setPopIntentType] = useState('copy')
+  const [toast, setToast] = useState('')
+
+  /* ---- 登录引导（全屏） ---- */
+  const [gateOpen, setGateOpen] = useState(false)
+  const [email, setEmail] = useState(''); const [name, setName] = useState(''); const [loginErr, setLoginErr] = useState('')
+
+  /* ---- 面板 / 弹层 ---- */
   const [panelOpen, setPanelOpen] = useState(true)
-  const [draft, setDraft] = useState('')
-  const [intentOpen, setIntentOpen] = useState(false)   // 选中元素后展开意图输入
-  const [intentType, setIntentType] = useState('copy')
-  const [intentText, setIntentText] = useState('')
-  const [pageIntentOpen, setPageIntentOpen] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [replyTo, setReplyTo] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
-  const [basket, setBasket] = useState<Set<string>>(new Set()) // intent id 或 'c:'+commentId
+  const [basket, setBasket] = useState<Set<string>>(new Set())
   const [promptModal, setPromptModal] = useState<{ text: string; intentIds: string[] } | null>(null)
   const [claimOnCopy, setClaimOnCopy] = useState(true)
   const [copied, setCopied] = useState('')
-  const [email, setEmail] = useState(''); const [name, setName] = useState(''); const [loginErr, setLoginErr] = useState('')
+  const [pageIntentOpen, setPageIntentOpen] = useState(false)
+  const [pageIntentText, setPageIntentText] = useState('')
+  const [pageIntentType, setPageIntentType] = useState('other')
   const [shareOpen, setShareOpen] = useState(false)
   const [collabs, setCollabs] = useState<{ user_id: string; email: string; name: string; role: string }[]>([])
   const [addEmail, setAddEmail] = useState(''); const [addRole, setAddRole] = useState('commenter'); const [shareErr, setShareErr] = useState('')
@@ -138,6 +163,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
   const pointerWorld = useRef({ x: 0, y: 0 })
   const objectsRef = useRef(objects); objectsRef.current = objects
   const focusRef = useRef(focusId); focusRef.current = focusId
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const frames = useMemo(() => layoutFrames(versions), [versions])
   const mainlines = useMemo(() => versions.filter((v) => v.kind !== 'variant').sort((a, b) => a.number - b.number), [versions])
@@ -152,9 +178,15 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
   }, [])
 
   const objList = useMemo(() => Object.values(objects).filter((o) => !o.deleted), [objects])
-  const intents = useMemo(() => objList.filter((o) => o.type === 'intent').sort((a, b) => (a.status === b.status ? b.updated_at.localeCompare(a.updated_at) : a.status === 'resolved' ? 1 : b.status === 'resolved' ? -1 : 0)), [objList])
+  const intents = useMemo(() => objList.filter((o) => o.type === 'intent'), [objList])
   const notes = useMemo(() => objList.filter((o) => o.type === 'note'), [objList])
   const openIntentCount = intents.filter((i) => i.status !== 'resolved').length
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(''), 4000)
+  }, [])
 
   /* ================= 坐标 & 视图控制 ================= */
 
@@ -173,13 +205,12 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     const f = layoutFrames(versions).find((fp) => fp.v.id === vid)
     const root = rootRef.current
     if (!f) return
-    // 容器尺寸未就绪时重试（首帧挂载竞态）
     if ((!root || root.clientWidth < 60 || root.clientHeight < 60) && attempt < 20) {
       setTimeout(() => fitFrame(vid, attempt + 1), 100)
       return
     }
     if (!root) return
-    const rw = root.clientWidth - (panelOpen && !isMobile ? 340 : 0)
+    const rw = root.clientWidth - (panelOpen && !isMobile ? PANEL_W : 0)
     const rh = root.clientHeight
     const z = Math.min(MAX_Z, Math.max(MIN_Z, Math.min(rw / FW, (rh - BAR) / (FH + BAR)) * 0.96))
     animateTo({ z, x: (rw - FW * z) / 2 - f.x * z, y: (rh - (FH + BAR) * z) / 2 - f.y * z + 10 })
@@ -190,7 +221,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     if (!root || !frames.length) return
     const maxX = Math.max(...frames.map((f) => f.x)) + FW
     const maxY = Math.max(...frames.map((f) => f.y)) + FH + BAR
-    const rw = root.clientWidth - (panelOpen && !isMobile ? 340 : 0)
+    const rw = root.clientWidth - (panelOpen && !isMobile ? PANEL_W : 0)
     const z = Math.min(MAX_Z, Math.max(MIN_Z, Math.min(rw / (maxX + 200), root.clientHeight / (maxY + 200), 1)))
     animateTo({ z, x: Math.max(40, (rw - maxX * z) / 2), y: 100 * z + 40 })
   }, [frames, panelOpen, isMobile, animateTo])
@@ -207,7 +238,6 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     fitAll()
   }, [fitAll])
 
-  /* 初始：聚焦最新主线帧 */
   useLayoutEffect(() => {
     setFocusId(initialFocusId)
     const timer = setTimeout(() => fitFrame(initialFocusId), 50)
@@ -233,7 +263,11 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
 
   useEffect(() => {
     let stop = false
-    fetch('/api/me').then((r) => r.json()).then((d) => setMe(d.user))
+    fetch('/api/me').then((r) => r.json()).then((d) => {
+      setMe(d.user)
+      // 首次进入且未登录 → 全屏引导（可跳过）
+      if (!d.user && !localStorage.getItem('hc_login_skipped')) setGateOpen(true)
+    })
     fetch(`/api/p/${slug}/role`).then((r) => r.json()).then((d) => setRole(d.role ?? 'anon'))
     fetch(`/api/p/${slug}/canvas`).then((r) => r.json()).then((d) => {
       if (stop || !d.objects) return
@@ -247,22 +281,18 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       if (!d || stop) return
       mergeObjects(d.changed ?? [])
       setPresence(d.presence ?? [])
-      if (d.versions?.length) {
-        setVersions((prev) => (d.versions.length !== prev.length ? d.versions : prev))
-      }
+      if (d.versions?.length) setVersions((prev) => (d.versions.length !== prev.length ? d.versions : prev))
     }, 1500)
     return () => { stop = true; clearInterval(timer) }
   }, [slug, mergeObjects])
 
-  /* 评论轮询（针对聚焦帧计算锚定） */
   const refreshComments = useCallback(async () => {
     const vid = focusRef.current ?? latestMain?.id
     if (!vid) return
-    const res = await fetch(`/api/p/${slug}/comments?version=${vid}`)
-    if (!res.ok) return
+    const res = await fetch(`/api/p/${slug}/comments?version=${vid}`).catch(() => null)
+    if (!res?.ok) return
     const data = await res.json()
     setComments(data.comments)
-    // badges 推给聚焦帧
     const counts: Record<string, number> = {}
     for (const c of data.comments as Comment[]) {
       if (!c.parent_id && c.status === 'open' && c.cc_id && c.anchored) counts[c.cc_id] = (counts[c.cc_id] || 0) + 1
@@ -277,7 +307,6 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     return () => clearInterval(timer)
   }, [refreshComments, focusId])
 
-  /* presence 心跳 */
   useEffect(() => {
     if (!me) return
     const timer = setInterval(() => {
@@ -299,9 +328,9 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       if (!vid) return
       if (msg.type === 'ready') refreshComments()
       if (msg.type === 'select') {
-        setSelected({ ccId: msg.ccId, tag: msg.tag, snippet: msg.snippet, html: msg.html })
-        setIntentOpen(false)
-        setPanelOpen(true); setPanelTab('comments')
+        setSelected({ ccId: msg.ccId, tag: msg.tag, snippet: msg.snippet, html: msg.html, rect: msg.rect })
+        setPopText('')
+        setPopMode('comment')
       }
       if (msg.type === 'cleared') setSelected(null)
     }
@@ -315,31 +344,29 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     iframes.current.get(vid)?.contentWindow?.postMessage({ source: 'htmlcollab-shell', ...msg }, '*')
   }, [])
 
-  /* 评论模式开关同步到聚焦帧 */
   useEffect(() => {
     toFocusedFrame({ type: 'mode', on: mode })
     if (!mode) { setSelected(null); toFocusedFrame({ type: 'clearSelect' }) }
   }, [mode, toFocusedFrame])
 
-  /* Esc 分层退出 */
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'TEXTAREA' || tag === 'INPUT') return
-      if (promptModal || shareOpen || pageIntentOpen) { setPromptModal(null); setShareOpen(false); setPageIntentOpen(false); return }
+      if (promptModal || shareOpen || pageIntentOpen || gateOpen) { setPromptModal(null); setShareOpen(false); setPageIntentOpen(false); setGateOpen(false); return }
       if (selected) { setSelected(null); toFocusedFrame({ type: 'clearSelect' }); return }
       if (mode) { setMode(false); return }
       if (focusRef.current && !isMobile) exitFocus()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selected, mode, exitFocus, promptModal, shareOpen, pageIntentOpen, toFocusedFrame, isMobile])
+  }, [selected, mode, exitFocus, promptModal, shareOpen, pageIntentOpen, gateOpen, toFocusedFrame, isMobile])
 
   /* ================= 画布手势 ================= */
 
   const onWheel = useCallback((e: React.WheelEvent) => {
-    if ((e.target as HTMLElement).closest?.('.cv-panel, .modal, .cv-toolbar')) return
+    if ((e.target as HTMLElement).closest?.('.cv-panel, .modal, .cv-toolbar, .cv-popover, .cv-gate')) return
     e.preventDefault()
     const cur = tRef.current
     if (e.ctrlKey || e.metaKey) {
@@ -354,21 +381,6 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     }
   }, [])
 
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    const el = e.target as HTMLElement
-    if (el.closest('.cv-panel, .cv-toolbar, .modal, button, textarea, input, select, a')) return
-    const objEl = el.closest<HTMLElement>('[data-obj-id]')
-    if (objEl && me) {
-      const id = objEl.dataset.objId!
-      const o = objectsRef.current[id]
-      if (!o) return
-      dragRef.current = { kind: 'obj', id, sx: e.clientX, sy: e.clientY, ox: o.x, oy: o.y, moved: false }
-    } else if (el.closest('.cv-pannable')) {
-      dragRef.current = { kind: 'pan', sx: e.clientX, sy: e.clientY, ox: tRef.current.x, oy: tRef.current.y, moved: false }
-    } else return
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-  }, [me])
-
   const pushObject = useCallback(async (partial: Record<string, unknown>) => {
     const res = await fetch(`/api/p/${slug}/canvas/objects`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(partial),
@@ -380,6 +392,21 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
   }, [slug, mergeObjects])
 
   const dragSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    const el = e.target as HTMLElement
+    if (el.closest('.cv-panel, .cv-toolbar, .modal, .cv-popover, .cv-gate, button, textarea, input, select, a')) return
+    const objEl = el.closest<HTMLElement>('[data-obj-id]')
+    if (objEl && me) {
+      const id = objEl.dataset.objId!
+      const o = objectsRef.current[id]
+      if (!o) return
+      dragRef.current = { kind: 'obj', id, sx: e.clientX, sy: e.clientY, ox: o.x, oy: o.y, moved: false }
+    } else if (el.closest('.cv-pannable')) {
+      dragRef.current = { kind: 'pan', sx: e.clientX, sy: e.clientY, ox: tRef.current.x, oy: tRef.current.y, moved: false }
+    } else return
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }, [me])
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const rect = rootRef.current?.getBoundingClientRect()
@@ -413,15 +440,20 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     dragRef.current = null
   }, [pushObject])
 
-  /* 双击空白创建便签 */
+  const requireAuth = useCallback((): boolean => {
+    if (me) return true
+    setGateOpen(true)
+    return false
+  }, [me])
+
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     const el = e.target as HTMLElement
     if (!el.classList.contains('cv-bg')) return
-    if (!me) { setPanelOpen(true); return }
+    if (!requireAuth()) return
     const rect = rootRef.current!.getBoundingClientRect()
     const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top)
     pushObject({ type: 'note', x: w.x - 110, y: w.y - 70, w: 220, h: 140, content: { text: '' } }).then((o) => o && setEditingNote(o.id))
-  }, [me, screenToWorld, pushObject])
+  }, [requireAuth, screenToWorld, pushObject])
 
   /* ================= 业务动作 ================= */
 
@@ -432,21 +464,42 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     const data = await res.json()
     if (!res.ok) return setLoginErr(data.error || '登录失败')
     setMe(data.user)
+    setGateOpen(false)
     fetch(`/api/p/${slug}/role`).then((r) => r.json()).then((d) => setRole(d.role ?? 'anon'))
+    showToast(`👋 欢迎 ${data.user.name}，点「✍️ 标注」开始在页面上圈点`)
   }
 
-  async function submitComment() {
-    if (!selected || !draft.trim()) return
-    await fetch(`/api/p/${slug}/comments`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ccId: selected.ccId, elementTag: selected.tag, elementSnippet: selected.snippet, body: draft }),
-    })
-    setDraft(''); setSelected(null); toFocusedFrame({ type: 'clearSelect' })
-    refreshComments()
+  /* ---- 原位标注提交 ---- */
+  async function submitAnnotation() {
+    if (!selected || !popText.trim()) return
+    if (!requireAuth()) return
+    if (popMode === 'comment') {
+      await fetch(`/api/p/${slug}/comments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ccId: selected.ccId, elementTag: selected.tag, elementSnippet: selected.snippet, body: popText }),
+      })
+      showToast('✓ 已评论 · 继续点选其他元素，或在右侧动态里查看')
+      refreshComments()
+    } else {
+      const vid = focusRef.current ?? latestMain?.id ?? null
+      const f = frames.find((fp) => fp.v.id === vid)
+      const siblings = intents.filter((i) => pj<{ versionId?: string }>(i.anchor, {}).versionId === vid).length
+      await pushObject({
+        type: 'intent',
+        x: f ? f.x + FW + 60 : pointerWorld.current.x, y: f ? f.y + siblings * 190 : pointerWorld.current.y,
+        w: 260, h: 170,
+        anchor: { versionId: vid, ccId: selected.ccId, tag: selected.tag, snippet: selected.snippet, html: selected.html },
+        content: { intentType: popIntentType, text: popText.trim() },
+      })
+      showToast('✓ 已标注修改 · 可继续标注，攒一批后在右侧多选「生成指令」交给 agent')
+    }
+    setPopText('')
+    setSelected(null)
+    toFocusedFrame({ type: 'clearSelect' })
   }
 
   async function submitReply(parentId: string) {
-    if (!replyDraft.trim()) return
+    if (!replyDraft.trim() || !requireAuth()) return
     await fetch(`/api/p/${slug}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parentId, body: replyDraft }) })
     setReplyDraft(''); setReplyTo(null); refreshComments()
   }
@@ -456,39 +509,21 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     refreshComments()
   }
 
-  function intentPosition(vid: string | null) {
-    const f = vid ? frames.find((fp) => fp.v.id === vid) : null
-    const siblings = intents.filter((i) => pj<{ versionId?: string }>(i.anchor, {}).versionId === vid).length
-    if (f) return { x: f.x + FW + 60, y: f.y + siblings * 190 }
-    const c = pointerWorld.current
-    return { x: c.x, y: c.y }
-  }
-
-  async function createIntent(anchor: Selected | null, type: string, text: string) {
-    if (!text.trim()) return
-    const vid = focusRef.current ?? latestMain?.id ?? null
-    const pos = intentPosition(anchor ? vid : null)
-    await pushObject({
-      type: 'intent', ...pos, w: 260, h: 170,
-      anchor: anchor ? { versionId: vid, ccId: anchor.ccId, tag: anchor.tag, snippet: anchor.snippet, html: anchor.html } : null,
-      content: { intentType: type, text: text.trim() },
-    })
-    setIntentOpen(false); setPageIntentOpen(false); setIntentText(''); setSelected(null)
-    toFocusedFrame({ type: 'clearSelect' })
-    setPanelTab('intents')
-  }
-
   async function threadToIntent(c: Comment) {
+    if (!requireAuth()) return
     const replies = comments.filter((r) => r.parent_id === c.id)
     const text = [c.body, ...replies.map((r) => `${r.author_name}: ${r.body}`)].join('；')
     const vid = latestMain?.id ?? null
-    const pos = intentPosition(vid)
+    const f = frames.find((fp) => fp.v.id === vid)
+    const siblings = intents.filter((i) => pj<{ versionId?: string }>(i.anchor, {}).versionId === vid).length
     await pushObject({
-      type: 'intent', ...pos, w: 260, h: 170,
+      type: 'intent',
+      x: f ? f.x + FW + 60 : 0, y: f ? f.y + siblings * 190 : 0,
+      w: 260, h: 170,
       anchor: c.cc_id ? { versionId: vid, ccId: c.cc_id, tag: c.element_tag, snippet: c.element_snippet } : null,
       content: { intentType: 'other', text, sourceCommentId: c.id },
     })
-    setPanelTab('intents')
+    showToast('✓ 评论已转为修改标注')
   }
 
   /* ---- Prompt 生成 ---- */
@@ -500,9 +535,9 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       i++
       const anchor = pj<{ ccId?: string; tag?: string; snippet?: string; html?: string }>(it.anchor, {})
       const content = pj<{ intentType?: string; text?: string }>(it.content, {})
-      const lines = [`## ${i}. [意图·${intentLabel(content.intentType)}] ${anchor.ccId ? `<${anchor.tag} data-cc-id="${anchor.ccId}">${anchor.snippet ? `（“${anchor.snippet}”）` : ''}` : '（页面级）'}`]
-      lines.push(`要求: ${content.text ?? ''}`)
-      lines.push(`意图卡 id: ${it.id}`)
+      const lines = [`## ${i}. [修改·${intentLabel(content.intentType)}] ${anchor.ccId ? `<${anchor.tag} data-cc-id="${anchor.ccId}">${anchor.snippet ? `（“${anchor.snippet}”）` : ''}` : '（页面级）'}`]
+      lines.push(`要求（${it.created_name} · ${fmt(it.updated_at)}）: ${content.text ?? ''}`)
+      lines.push(`标注 id: ${it.id}`)
       if (anchor.html) lines.push('元素当前源码:', '```html', anchor.html, '```')
       items.push(lines.join('\n'))
     }
@@ -510,8 +545,8 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       i++
       const replies = comments.filter((r) => r.parent_id === c.id)
       const lines = [`## ${i}. [评论] <${c.element_tag} data-cc-id="${c.cc_id}">${c.element_snippet ? `（“${c.element_snippet}”）` : ''}`]
-      lines.push(`- ${c.author_name}: ${c.body}`)
-      for (const r of replies) lines.push(`  - ${r.author_name}: ${r.body}`)
+      lines.push(`- ${c.author_name}（${fmt(c.created_at)}）: ${c.body}`)
+      for (const r of replies) lines.push(`  - ${r.author_name}（${fmt(r.created_at)}）: ${r.body}`)
       items.push(lines.join('\n'))
     }
     const resolveIds = intentObjs.map((o) => o.id).join(',')
@@ -523,18 +558,18 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       items.join('\n\n'),
       ``,
       `操作步骤:`,
-      `1. 已接入项目直接改本地文件；否则 curl ${origin}/api/p/${slug}/html -o page.html`,
-      `2. 修改时保留所有 data-cc-id 属性（评论锚点）`,
-      `3. 发布: npx htmlcollab-cli push page.html --slug ${slug} --server ${origin} --base ${latestMain?.id}${resolveIds ? ` --resolves ${resolveIds}` : ''}`,
-      `   （需编辑权限；--resolves 会把画布上的意图卡自动标记为已解决）`,
-      `4. 完整上下文: npx htmlcollab-cli pull 或 ${origin}/api/p/${slug}/context`,
+      `1. 先拉取完整上下文（含版本历史——之前每一版改了什么）: npx htmlcollab-cli pull 或 curl ${origin}/api/p/${slug}/context`,
+      `2. 获取页面源码: curl ${origin}/api/p/${slug}/html -o page.html（本地已有项目源文件则直接改）`,
+      `3. 修改时保留所有 data-cc-id 属性（评论锚点）`,
+      `4. 发布: npx htmlcollab-cli push page.html --slug ${slug} --server ${origin} --base ${latestMain?.id}${resolveIds ? ` --resolves ${resolveIds}` : ''}`,
+      `   （需编辑权限；--resolves 会把画布上的标注自动标记为已解决）`,
     ].join('\n')
   }
 
   async function generatePrompt(intentObjs: CObj[], threadTops: Comment[]) {
     const text = buildPrompt(intentObjs, threadTops)
     try { await navigator.clipboard.writeText(text) } catch { /* modal 里可手动复制 */ }
-    setPromptModal({ text, intentIds: intentObjs.map((o) => o.id) })
+    setPromptModal({ text, intentIds: intentObjs.map((o) => o.id).filter(Boolean) })
   }
 
   async function confirmPrompt() {
@@ -573,6 +608,11 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     if (next.has(key)) next.delete(key); else next.add(key)
     return next
   })
+  const toggleExpand = (key: string) => setExpanded((prev) => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    return next
+  })
 
   function generateFromBasket() {
     const intentObjs = [...basket].filter((k) => !k.startsWith('c:')).map((k) => objects[k]).filter(Boolean)
@@ -606,17 +646,46 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     return set
   }, [frames, t, focusId])
 
-  /* ================= 渲染 ================= */
+  /* ================= 协作动态流（统一 feed） ================= */
 
-  const tops = comments.filter((c) => !c.parent_id).sort((a, b) => (a.status < b.status ? -1 : a.status > b.status ? 1 : b.created_at.localeCompare(a.created_at)))
-  const openCount = tops.filter((c) => c.status === 'open').length
+  type FeedItem =
+    | { kind: 'version'; time: string; v: VersionInfo }
+    | { kind: 'comment'; time: string; c: Comment }
+    | { kind: 'intent'; time: string; o: CObj }
+
+  const feed = useMemo<FeedItem[]>(() => {
+    const items: FeedItem[] = []
+    for (const v of versions) items.push({ kind: 'version', time: v.created_at, v })
+    for (const c of comments.filter((x) => !x.parent_id)) items.push({ kind: 'comment', time: c.created_at, c })
+    for (const o of intents) items.push({ kind: 'intent', time: o.updated_at, o })
+    return items.sort((a, b) => b.time.localeCompare(a.time))
+  }, [versions, comments, intents])
+
   const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id)
   const focusedFrame = frames.find((f) => f.v.id === focusId)
+
+  /* ---- 标注弹窗屏幕坐标 ---- */
+  const popoverPos = useMemo(() => {
+    if (!selected?.rect || !focusedFrame) return null
+    const r = selected.rect
+    const wx = focusedFrame.x + r.x
+    const wy = focusedFrame.y + BAR + r.y + r.h
+    const root = rootRef.current
+    const maxX = (root?.clientWidth ?? 1200) - (panelOpen && !isMobile ? PANEL_W : 0) - 340
+    const maxY = (root?.clientHeight ?? 800) - 260
+    return {
+      x: Math.max(12, Math.min(wx * t.z + t.x, maxX)),
+      y: Math.max(60, Math.min(wy * t.z + t.y + 8, maxY)),
+    }
+  }, [selected, focusedFrame, t, panelOpen, isMobile])
+
+  /* ================= 渲染 ================= */
 
   return (
     <div
       ref={rootRef}
       className="cv-root"
+      style={{ right: panelOpen && !isMobile ? PANEL_W : 0 }}
       onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -630,7 +699,6 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       >
         <div className="cv-bg cv-pannable" />
 
-        {/* 帧 */}
         {frames.map((f) => {
           const live = liveIds.has(f.v.id)
           const isFocused = focusId === f.v.id
@@ -643,7 +711,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
                     变体{(() => { const b = versions.find((x) => x.id === f.v.base_version_id); return b ? ` · 基于 v${b.number}` : '' })()}
                   </span>
                 )}
-                <span className="cv-frame-meta">{f.v.pushed_by_name ?? ''} · {fmt(f.v.created_at)}</span>
+                <span className="cv-frame-meta">{f.v.pushed_by_name ?? ''} · {fmt(f.v.created_at)}{changesSummary(parseChanges(f.v.changes)) ? ` · ${changesSummary(parseChanges(f.v.changes))}` : ''}</span>
                 <span className="spacer" />
                 {f.v.kind === 'variant' && canEdit && (
                   <button className="cv-mini-btn" onClick={() => promote(f.v.id)}>↑ 设为主线</button>
@@ -671,7 +739,6 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
           )
         })}
 
-        {/* 便签 */}
         {notes.map((o) => {
           const content = pj<{ text?: string }>(o.content, {})
           return (
@@ -688,7 +755,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
                 </div>
               )}
               <div className="cv-note-foot">
-                <span>{o.created_name}</span>
+                <span>{o.created_name} · {fmt(o.updated_at)}</span>
                 {me && (me.id === o.created_by || canEdit) && (
                   <button className="cv-x" onClick={() => pushObject({ id: o.id, deleted: true })}>✕</button>
                 )}
@@ -697,7 +764,6 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
           )
         })}
 
-        {/* 意图卡 */}
         {intents.map((o) => {
           const anchor = pj<{ ccId?: string; tag?: string; snippet?: string; versionId?: string }>(o.anchor, {})
           const content = pj<{ intentType?: string; text?: string }>(o.content, {})
@@ -705,7 +771,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
           return (
             <div key={o.id} data-obj-id={o.id} className={`cv-intent st-${o.status}`} style={{ left: o.x, top: o.y, width: o.w || 260 }}>
               <div className="cv-intent-head">
-                <input type="checkbox" checked={basket.has(o.id)} onChange={() => toggleBasket(o.id)} onPointerDown={(e) => e.stopPropagation()} />
+                <input type="checkbox" checked={basket.has(o.id)} disabled={o.status === 'resolved'} onChange={() => toggleBasket(o.id)} onPointerDown={(e) => e.stopPropagation()} />
                 <span className="cv-chip">{intentLabel(content.intentType)}</span>
                 <span className={`cv-dot st-${o.status}`} />
                 <span className="cv-status-txt">
@@ -719,7 +785,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
               )}
               <div className="cv-intent-text">{content.text}</div>
               <div className="cv-intent-foot">
-                <span>{o.created_name}</span>
+                <span>{o.created_name} · {fmt(o.updated_at)}</span>
                 <span className="spacer" />
                 {me && o.status !== 'resolved' && (
                   <button className="link-btn" onClick={() => generatePrompt([o], [])}>🤖 指令</button>
@@ -737,7 +803,6 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
           )
         })}
 
-        {/* presence 光标 */}
         {presence.filter((p) => p.user_id !== me?.id).map((p) => (
           <div key={p.user_id} className="cv-cursor" style={{ left: p.x, top: p.y, color: p.color }}>
             <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M4 2l16 7.6-7 2.2-2.6 6.9z" /></svg>
@@ -746,12 +811,50 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
         ))}
       </div>
 
-      {/* ===== 工具栏 ===== */}
+      {/* ===== 原位标注弹窗 ===== */}
+      {selected && popoverPos && (
+        <div className="cv-popover" style={{ left: popoverPos.x, top: popoverPos.y }} onPointerDown={(e) => e.stopPropagation()}>
+          <div className="cv-pop-head">
+            <span className="el-chip">
+              <span className="txt">&lt;{selected.tag}&gt; {selected.snippet || selected.ccId}</span>
+              <button title="扩大到父级" onClick={() => toFocusedFrame({ type: 'widen' })}>⬆</button>
+            </span>
+            <button className="cv-x" onClick={() => { setSelected(null); toFocusedFrame({ type: 'clearSelect' }) }}>✕</button>
+          </div>
+          <div className="cv-pop-tabs">
+            <button className={popMode === 'comment' ? 'on' : ''} onClick={() => setPopMode('comment')}>💬 评论</button>
+            <button className={popMode === 'intent' ? 'on' : ''} onClick={() => setPopMode('intent')}>✏️ 标注修改</button>
+          </div>
+          {popMode === 'intent' && (
+            <div className="cv-chips" style={{ margin: '8px 0 0' }}>
+              {INTENT_TYPES.map(([k, label]) => (
+                <button key={k} className={`cv-chip-btn ${popIntentType === k ? 'on' : ''}`} onClick={() => setPopIntentType(k)}>{label}</button>
+              ))}
+            </div>
+          )}
+          <textarea
+            className="input"
+            rows={2}
+            autoFocus
+            placeholder={popMode === 'comment' ? '说点什么…（回车发送）' : '想怎么改？会变成给 agent 的修改标注（回车确认）'}
+            value={popText}
+            onChange={(e) => setPopText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAnnotation() } }}
+          />
+          <div className="cv-actions-row">
+            <span className="cv-pop-hint">{me ? `以 ${me.name} 提交` : '提交前需登录'}</span>
+            <span className="spacer" />
+            <button className="btn primary sm" onClick={submitAnnotation}>{popMode === 'comment' ? '发送评论' : '确认标注'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 工具栏（左上停靠） ===== */}
       <header className="cv-toolbar">
         <Link href="/dashboard" className="brand">◈</Link>
         <span className="cv-title">{title}</span>
         {focusedFrame && <span className="badge-v">v{focusedFrame.v.number}{focusedFrame.v.kind === 'variant' ? ' 变体' : ''}</span>}
-        <span className="spacer" />
+        <span className="cv-divider" />
         {!isMobile && (
           <>
             <div className="cv-zoom">
@@ -774,133 +877,132 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
           </select>
         )}
         <button className={`btn primary sm ${mode ? 'danger-on' : ''}`} onClick={() => { if (!focusId && latestMain) focusFrame(latestMain.id); setMode(!mode) }}>
-          {mode ? '✕ 退出评论' : '💬 评论'}
+          {mode ? '✕ 退出标注' : '✍️ 标注'}
         </button>
-        {!isMobile && me && <button className="btn sm" onClick={() => setPageIntentOpen(true)}>◇ 意图</button>}
-        <button className="btn sm" onClick={() => window.open(`/api/p/${slug}/context`, '_blank')}>🤖</button>
-        {role === 'owner' && <button className="btn sm" onClick={openShare}>👥</button>}
-        <button className="btn sm" onClick={() => setPanelOpen(!panelOpen)}>{panelOpen ? '⇥' : '⇤'}</button>
+        <button className="btn sm" title="Agent 上下文" onClick={() => window.open(`/api/p/${slug}/context`, '_blank')}>🤖</button>
+        {role === 'owner' && <button className="btn sm" title="分享 / 权限" onClick={openShare}>👥</button>}
+        {!me && <button className="btn sm" onClick={() => setGateOpen(true)}>登录</button>}
+        <button className="btn sm" title="收起/展开动态" onClick={() => setPanelOpen(!panelOpen)}>{panelOpen ? '⇥' : '⇤'}</button>
       </header>
 
-      {/* ===== 右侧面板 ===== */}
+      {/* ===== 右侧：协作动态（统一 feed，全高对齐） ===== */}
       {panelOpen && (
         <aside className="cv-panel">
-          <div className="cv-tabs">
-            <button className={panelTab === 'comments' ? 'on' : ''} onClick={() => setPanelTab('comments')}>评论 {openCount ? `(${openCount})` : ''}</button>
-            <button className={panelTab === 'intents' ? 'on' : ''} onClick={() => setPanelTab('intents')}>意图 {openIntentCount ? `(${openIntentCount})` : ''}</button>
+          <div className="cv-panel-head">
+            <b>协作动态</b>
+            <span className="count">{openIntentCount ? `${openIntentCount} 项待处理` : ''}</span>
+            <span className="spacer" />
+            {me && !isMobile && <button className="link-btn" onClick={() => { setPageIntentText(''); setPageIntentOpen(true) }}>+ 页面级标注</button>}
           </div>
-
-          {/* 登录 / 选中元素动作区 */}
-          <div className="cv-composer">
-            {me === undefined ? null : me === null ? (
-              <form className="mini-login" onSubmit={login}>
-                <p>输入邮箱和用户名即可参与协作（无需验证）</p>
-                <input className="input" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-                <input className="input" placeholder="用户名" value={name} onChange={(e) => setName(e.target.value)} required />
-                {loginErr && <p className="error-text">{loginErr}</p>}
-                <button className="btn primary sm" style={{ width: '100%' }}>登录并开始协作</button>
-              </form>
-            ) : selected ? (
-              <div>
-                <span className="el-chip">
-                  <span className="txt">&lt;{selected.tag}&gt; {selected.snippet || selected.ccId}</span>
-                  <button title="扩大到父级" onClick={() => toFocusedFrame({ type: 'widen' })}>⬆</button>
-                </span>
-                {!intentOpen ? (
-                  <>
-                    <textarea className="input" rows={2} autoFocus placeholder="评论…（回车发送）" value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment() } }} />
-                    <div className="cv-actions-row">
-                      <button className="btn sm" onClick={() => setIntentOpen(true)}>◇ 提意图</button>
-                      <button className="btn sm" onClick={() => { navigator.clipboard.writeText(buildPrompt([], [])); generatePrompt([], []) }} style={{ display: 'none' }} />
-                      <button className="btn sm" title="生成含此元素源码的指令" onClick={() => {
-                        const fake: CObj = { id: '', type: 'intent', x: 0, y: 0, w: 0, h: 0, anchor: JSON.stringify({ ccId: selected.ccId, tag: selected.tag, snippet: selected.snippet, html: selected.html }), content: JSON.stringify({ intentType: 'other', text: '（描述你的修改要求）' }), status: 'open', claimed_by: null, claimed_name: null, resolved_version_id: null, created_by: '', created_name: '', updated_at: '', deleted: 0, seq: 0 }
-                        generatePrompt([fake], [])
-                      }}>🤖 指令</button>
-                      <span className="spacer" />
-                      <button className="btn primary sm" onClick={submitComment}>发送</button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="cv-chips">
-                      {INTENT_TYPES.map(([k, label]) => (
-                        <button key={k} className={`cv-chip-btn ${intentType === k ? 'on' : ''}`} onClick={() => setIntentType(k)}>{label}</button>
-                      ))}
-                    </div>
-                    <textarea className="input" rows={2} autoFocus placeholder="想怎么改？（回车创建意图卡）" value={intentText}
-                      onChange={(e) => setIntentText(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); createIntent(selected, intentType, intentText) } }} />
-                    <div className="cv-actions-row">
-                      <button className="btn sm" onClick={() => setIntentOpen(false)}>返回</button>
-                      <span className="spacer" />
-                      <button className="btn primary sm" onClick={() => createIntent(selected, intentType, intentText)}>创建意图卡</button>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="placeholder">
-                {mode ? '在页面中点击任意元素：可评论、可提意图、可直接生成 agent 指令。' : '点「💬 评论」进入选取模式；双击空白画布贴便签；意图卡片在画布上实时同步。'}
-              </div>
-            )}
-          </div>
-
-          {/* 列表 */}
+          {mode && (
+            <div className="cv-panel-tip">正在标注：点选左侧页面中的任意元素 → 原位输入评论或修改要求</div>
+          )}
           <div className="cv-list">
-            {panelTab === 'comments' ? (
-              tops.length === 0 ? <div className="empty">还没有评论</div> : tops.map((c) => (
-                <div key={c.id} className={`thread ${c.status}`}
-                  onClick={() => { if (c.anchored && c.cc_id) toFocusedFrame({ type: 'scrollTo', ccId: c.cc_id }) }}>
-                  <div className="cv-thread-top">
-                    <input type="checkbox" checked={basket.has('c:' + c.id)} onChange={() => toggleBasket('c:' + c.id)} onClick={(e) => e.stopPropagation()} />
-                    <span className={`el ${c.anchored === false ? 'orphan' : ''}`}>
-                      {c.anchored === false ? '⚠ ' : ''}&lt;{c.element_tag}&gt; {c.element_snippet || c.cc_id}
-                    </span>
-                  </div>
-                  <div className="msg"><div className="meta">{c.author_name} · {fmt(c.created_at)}</div>{c.body}</div>
-                  {repliesOf(c.id).map((r) => (
-                    <div className="msg reply" key={r.id}><div className="meta">{r.author_name} · {fmt(r.created_at)}</div>{r.body}</div>
-                  ))}
-                  {me && (
-                    <div className="actions" onClick={(e) => e.stopPropagation()}>
-                      <button className="link-btn" onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setReplyDraft('') }}>回复</button>
-                      {(canEdit || c.author_id === me.id) && (
-                        <button className={`link-btn ${c.status === 'open' ? '' : 'grey'}`} onClick={() => resolveComment(c.id)}>
-                          {c.status === 'open' ? '✓ 解决' : '重开'}
-                        </button>
-                      )}
-                      <button className="link-btn" onClick={() => threadToIntent(c)}>◇ 转意图</button>
-                    </div>
-                  )}
-                  {replyTo === c.id && (
-                    <div className="reply-box" onClick={(e) => e.stopPropagation()}>
-                      <textarea className="input" rows={2} autoFocus value={replyDraft} placeholder="回复…"
-                        onChange={(e) => setReplyDraft(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitReply(c.id) } }} />
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              intents.length === 0 ? <div className="empty">还没有意图卡——选中元素后「◇ 提意图」，或把评论「转意图」</div> : intents.map((o) => {
-                const anchor = pj<{ ccId?: string; tag?: string; snippet?: string }>(o.anchor, {})
-                const content = pj<{ intentType?: string; text?: string }>(o.content, {})
-                const rv = o.resolved_version_id ? versions.find((v) => v.id === o.resolved_version_id) : null
+            {feed.length === 0 && <div className="empty">还没有动态——点「✍️ 标注」开始</div>}
+            {feed.map((item) => {
+              if (item.kind === 'version') {
+                const v = item.v
+                const ch = parseChanges(v.changes)
+                const summary = changesSummary(ch)
+                const baseRef = v.base_version_id ? versions.find((x) => x.id === v.base_version_id) : null
+                const solved = intents.filter((o) => o.resolved_version_id === v.id)
+                const open = expanded.has('v' + v.id)
                 return (
-                  <div key={o.id} className={`thread cv-intent-row st-${o.status}`}>
-                    <div className="cv-thread-top">
-                      <input type="checkbox" checked={basket.has(o.id)} disabled={o.status === 'resolved'} onChange={() => toggleBasket(o.id)} />
-                      <span className="cv-chip">{intentLabel(content.intentType)}</span>
-                      <span className="cv-status-txt">{o.status === 'resolved' ? `✓ v${rv?.number ?? ''}` : o.status === 'claimed' ? `${o.claimed_name} 处理中` : '待处理'}</span>
+                  <div key={'v' + v.id} className="cv-feed-version" onClick={() => focusFrame(v.id)}>
+                    <div className="cv-feed-meta">
+                      <span className="cv-avatar" style={{ background: '#4f46e5' }}>🚀</span>
+                      <b>{v.pushed_by_name ?? '系统'}</b> 发布了 <b>v{v.number}</b>
+                      {v.kind === 'variant' && <span className="cv-varchip">变体{baseRef ? ` · 基于 v${baseRef.number}` : ''}</span>}
+                      <span className="time">{fmt(v.created_at)}</span>
                     </div>
-                    {anchor.ccId && <span className="el">&lt;{anchor.tag}&gt; {anchor.snippet}</span>}
-                    <div className="msg"><div className="meta">{o.created_name} · {fmt(o.updated_at)}</div>{content.text}</div>
+                    {(summary || v.notes) && (
+                      <div className="cv-feed-body">
+                        {summary && <span className="cv-change-sum">{summary}</span>}
+                        {v.notes && <span className="cv-feed-notes">{v.notes}</span>}
+                        {ch && (ch.modified?.length || ch.added?.length || ch.removed?.length) ? (
+                          <button className="link-btn" onClick={(e) => { e.stopPropagation(); toggleExpand('v' + v.id) }}>{open ? '收起' : '改动明细'}</button>
+                        ) : null}
+                      </div>
+                    )}
+                    {open && ch && (
+                      <div className="cv-change-list" onClick={(e) => e.stopPropagation()}>
+                        {ch.modified?.map((m, i) => <div key={'m' + i}>~ <code>&lt;{m.tag}&gt;</code> “{m.from}” → “{m.to}”</div>)}
+                        {ch.added?.map((a, i) => <div key={'a' + i} className="add">+ <code>&lt;{a.tag}&gt;</code> “{a.text}”</div>)}
+                        {ch.removed?.map((r, i) => <div key={'r' + i} className="del">− <code>&lt;{r.tag}&gt;</code> “{r.text}”</div>)}
+                      </div>
+                    )}
+                    {solved.length > 0 && (
+                      <div className="cv-feed-solved">✓ 解决了 {solved.length} 项标注</div>
+                    )}
+                    {v.kind === 'variant' && canEdit && (
+                      <div onClick={(e) => e.stopPropagation()}><button className="link-btn" onClick={() => promote(v.id)}>↑ 设为主线</button></div>
+                    )}
                   </div>
                 )
-              })
-            )}
+              }
+              if (item.kind === 'comment') {
+                const c = item.c
+                return (
+                  <div key={'c' + c.id} className={`cv-feed-item ${c.status}`}
+                    onClick={() => { if (c.anchored && c.cc_id) toFocusedFrame({ type: 'scrollTo', ccId: c.cc_id }) }}>
+                    <div className="cv-feed-meta">
+                      <input type="checkbox" checked={basket.has('c:' + c.id)} disabled={c.status !== 'open'} onChange={() => toggleBasket('c:' + c.id)} onClick={(e) => e.stopPropagation()} />
+                      <span className="cv-avatar" style={{ background: '#0891b2' }}>💬</span>
+                      <b>{c.author_name}</b> 评论了
+                      <span className={`el ${c.anchored === false ? 'orphan' : ''}`}>{c.anchored === false ? '⚠ ' : ''}&lt;{c.element_tag}&gt; {c.element_snippet?.slice(0, 16)}</span>
+                      <span className="time">{fmt(c.created_at)}</span>
+                    </div>
+                    <div className="cv-feed-body">{c.body}</div>
+                    {repliesOf(c.id).map((r) => (
+                      <div className="msg reply" key={r.id}><div className="meta">{r.author_name} · {fmt(r.created_at)}</div>{r.body}</div>
+                    ))}
+                    {me && (
+                      <div className="actions" onClick={(e) => e.stopPropagation()}>
+                        <button className="link-btn" onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setReplyDraft('') }}>回复</button>
+                        {(canEdit || c.author_id === me.id) && (
+                          <button className={`link-btn ${c.status === 'open' ? '' : 'grey'}`} onClick={() => resolveComment(c.id)}>
+                            {c.status === 'open' ? '✓ 解决' : '重开'}
+                          </button>
+                        )}
+                        {c.status === 'open' && <button className="link-btn" onClick={() => threadToIntent(c)}>✏️ 转修改标注</button>}
+                      </div>
+                    )}
+                    {replyTo === c.id && (
+                      <div className="reply-box" onClick={(e) => e.stopPropagation()}>
+                        <textarea className="input" rows={2} autoFocus value={replyDraft} placeholder="回复…（回车发送）"
+                          onChange={(e) => setReplyDraft(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitReply(c.id) } }} />
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+              const o = item.o
+              const anchor = pj<{ ccId?: string; tag?: string; snippet?: string; versionId?: string }>(o.anchor, {})
+              const content = pj<{ intentType?: string; text?: string }>(o.content, {})
+              const rv = o.resolved_version_id ? versions.find((v) => v.id === o.resolved_version_id) : null
+              return (
+                <div key={'o' + o.id} className={`cv-feed-item st-${o.status}`}
+                  onClick={() => { if (anchor.versionId && anchor.ccId) { focusFrame(anchor.versionId); setTimeout(() => iframes.current.get(anchor.versionId!)?.contentWindow?.postMessage({ source: 'htmlcollab-shell', type: 'scrollTo', ccId: anchor.ccId }, '*'), 600) } }}>
+                  <div className="cv-feed-meta">
+                    <input type="checkbox" checked={basket.has(o.id)} disabled={o.status === 'resolved'} onChange={() => toggleBasket(o.id)} onClick={(e) => e.stopPropagation()} />
+                    <span className="cv-avatar" style={{ background: '#d97706' }}>✏️</span>
+                    <b>{o.created_name}</b> 标注修改
+                    {anchor.ccId ? <span className="el">&lt;{anchor.tag}&gt; {anchor.snippet?.slice(0, 14)}</span> : <span className="el">整个页面</span>}
+                    <span className="time">{fmt(o.updated_at)}</span>
+                  </div>
+                  <div className="cv-feed-body">
+                    <span className="cv-chip">{intentLabel(content.intentType)}</span> {content.text}
+                  </div>
+                  <div className="cv-feed-status">
+                    {o.status === 'resolved' ? `✓ 已在 v${rv?.number ?? '?'} 解决` : o.status === 'claimed' ? `⏳ ${o.claimed_name} 的 agent 处理中` : '待处理'}
+                    {me && o.status === 'open' && (
+                      <button className="link-btn" style={{ marginLeft: 10 }} onClick={(e) => { e.stopPropagation(); generatePrompt([o], []) }}>🤖 生成指令</button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </aside>
       )}
@@ -914,21 +1016,46 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
         </div>
       )}
 
-      {/* ===== 页面级意图弹窗 ===== */}
+      {/* ===== Toast ===== */}
+      {toast && <div className="cv-toast">{toast}</div>}
+
+      {/* ===== 全屏登录引导 ===== */}
+      {gateOpen && me === null && (
+        <div className="cv-gate">
+          <div className="cv-gate-card">
+            <h1>◈ {title}</h1>
+            <p>这是一个可协作的在线页面：选中任意元素<b>评论</b>或<b>标注修改</b>，所有反馈会实时同步给协作者，并回流给 agent 迭代下一版。</p>
+            <form onSubmit={login}>
+              <input className="input" type="email" placeholder="邮箱（免验证）" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input className="input" placeholder="你的名字（评论时展示）" value={name} onChange={(e) => setName(e.target.value)} required />
+              {loginErr && <p className="error-text">{loginErr}</p>}
+              <button className="btn primary" style={{ width: '100%', padding: 12 }}>进入协作</button>
+            </form>
+            <button className="cv-gate-skip" onClick={() => { localStorage.setItem('hc_login_skipped', '1'); setGateOpen(false) }}>先随便看看 →</button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 页面级标注弹窗 ===== */}
       {pageIntentOpen && (
         <div className="modal-mask" onClick={() => setPageIntentOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>页面级意图</h3>
+            <h3>页面级修改标注</h3>
             <p className="modal-sub">不针对具体元素的整体要求（如"整体配色往深色调走"）</p>
             <div className="cv-chips">
               {INTENT_TYPES.map(([k, label]) => (
-                <button key={k} className={`cv-chip-btn ${intentType === k ? 'on' : ''}`} onClick={() => setIntentType(k)}>{label}</button>
+                <button key={k} className={`cv-chip-btn ${pageIntentType === k ? 'on' : ''}`} onClick={() => setPageIntentType(k)}>{label}</button>
               ))}
             </div>
-            <textarea className="input" rows={3} autoFocus value={intentText} onChange={(e) => setIntentText(e.target.value)} placeholder="想怎么改？" />
+            <textarea className="input" rows={3} autoFocus value={pageIntentText} onChange={(e) => setPageIntentText(e.target.value)} placeholder="想怎么改？" />
             <div className="cv-actions-row" style={{ marginTop: 10 }}>
               <span className="spacer" />
-              <button className="btn primary" onClick={() => createIntent(null, intentType, intentText)}>创建意图卡</button>
+              <button className="btn primary" onClick={async () => {
+                if (!pageIntentText.trim() || !requireAuth()) return
+                await pushObject({ type: 'intent', x: pointerWorld.current.x, y: pointerWorld.current.y, w: 260, h: 170, anchor: null, content: { intentType: pageIntentType, text: pageIntentText.trim() } })
+                setPageIntentOpen(false)
+                showToast('✓ 已添加页面级标注')
+              }}>确认标注</button>
             </div>
           </div>
         </div>
@@ -939,12 +1066,12 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
         <div className="modal-mask" onClick={confirmPrompt}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>已复制！粘贴给你的 agent</h3>
-            <p className="modal-sub">包含元素源码、意图要求与发布命令，任何 agent 可直接执行。</p>
+            <p className="modal-sub">包含元素源码、修改要求与发布命令；agent 会先拉取版本历史再动手。</p>
             <textarea className="input" rows={12} readOnly value={promptModal.text} onFocus={(e) => e.target.select()} />
-            {promptModal.intentIds.filter(Boolean).length > 0 && (
+            {promptModal.intentIds.length > 0 && (
               <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: 13 }}>
                 <input type="checkbox" checked={claimOnCopy} onChange={(e) => setClaimOnCopy(e.target.checked)} />
-                认领这些意图（画布上标记为"我的 agent 处理中"）
+                认领这些标注（动态里显示"我的 agent 处理中"）
               </label>
             )}
             <div className="cv-actions-row" style={{ marginTop: 12 }}>
@@ -956,7 +1083,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
         </div>
       )}
 
-      {/* ===== 分享弹窗（复用原样式） ===== */}
+      {/* ===== 分享弹窗 ===== */}
       {shareOpen && (
         <div className="modal-mask" onClick={() => setShareOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>

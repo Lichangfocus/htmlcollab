@@ -9,6 +9,8 @@ export interface VersionInfo {
   base_version_id: string | null
   pushed_by_name: string | null
   created_at: string
+  notes: string | null
+  changes: string | null
 }
 
 export default async function PageView(props: {
@@ -26,7 +28,7 @@ export default async function PageView(props: {
   if (!page) notFound()
 
   const { results: versions } = await db
-    .prepare('SELECT id, number, kind, base_version_id, pushed_by_name, created_at FROM versions WHERE page_id = ? ORDER BY number ASC')
+    .prepare('SELECT id, number, kind, base_version_id, pushed_by_name, created_at, notes, changes FROM versions WHERE page_id = ? ORDER BY number ASC')
     .bind(page.id)
     .all<VersionInfo>()
   if (!versions.length) notFound()

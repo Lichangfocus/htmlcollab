@@ -11,7 +11,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
   const since = parseInt(new URL(req.url).searchParams.get('since') ?? '0', 10) || 0
   const changed = await getObjects(db, canvas.id, since)
   const { results: versions } = await db
-    .prepare('SELECT id, number, kind, base_version_id, pushed_by_name, created_at FROM versions WHERE page_id = ? ORDER BY number ASC')
+    .prepare('SELECT id, number, kind, base_version_id, pushed_by_name, created_at, notes, changes FROM versions WHERE page_id = ? ORDER BY number ASC')
     .bind(page.id)
     .all()
 

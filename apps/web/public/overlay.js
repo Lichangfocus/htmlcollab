@@ -49,11 +49,14 @@
     selectedEl = el
     el.classList.remove('cc-hover')
     el.classList.add('cc-selected')
+    const r = el.getBoundingClientRect()
     post({
       type: 'select',
       ccId: el.dataset.ccId,
       tag: el.tagName.toLowerCase(),
       snippet: snippetOf(el),
+      // 元素在 iframe 视口内的位置，供外层原位弹出标注输入框
+      rect: { x: r.left, y: r.top, w: r.width, h: r.height },
       // 元素当前源码（截断），供“复制给 agent 修改”生成代码块引用
       html: cleanHtml(el),
     })

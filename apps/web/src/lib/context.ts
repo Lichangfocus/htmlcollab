@@ -31,7 +31,19 @@ export interface IntentLike {
   claimed_name: string | null
   created_name: string
   created_at?: string
+  resolved_version_id?: string | null
   type: string
+}
+
+export interface VersionHistoryRow {
+  id: string
+  number: number
+  kind: string
+  base_version_id: string | null
+  pushed_by_name: string | null
+  created_at: string
+  notes: string | null
+  changes: string | null
 }
 
 /**
@@ -47,7 +59,8 @@ export function buildContext(
   version: VersionMeta,
   comments: CommentRow[],
   baseUrl: string,
-  canvasObjects: IntentLike[] = []
+  canvasObjects: IntentLike[] = [],
+  history: VersionHistoryRow[] = []
 ): string {
   const tops = comments.filter((c) => !c.parent_id)
   const replies = (id: string) => comments.filter((c) => c.parent_id === id)
@@ -82,6 +95,42 @@ export function buildContext(
     ``,
     open.length ? open.map(thread).join('\n\n') : `（无）`,
   ]
+
+  // ===== 版本历史（迭代元数据：谁在什么时候改了什么——续改前必读） =====
+  if (history.length) {
+    const intentsByVersion = new Map<string, IntentLike[]>()
+    for (const o of canvasObjects) {
+      if (o.type === 'intent' && o.resolved_version_id) {
+        const list = intentsByVersion.get(o.resolved_version_id) ?? []
+        list.push(o)
+        intentsByVersion.set(o.resolved_version_id, list)
+      }
+    }
+    const byId = new Map(history.map((h) => [h.id, h]))
+    const recent = [...history].sort((a, b) => b.number - a.number).slice(0, 10)
+    parts.push(``, `## 版本历史（每次迭代改了什么——这是持续修改的关键上下文）`, ``)
+    recent.forEach((h, idx) => {
+      let ch: { added: { id: string; tag: string; text?: string }[]; removed: { id: string; tag: string; text?: string }[]; modified: { id: string; tag: string; from?: string; to?: string }[] } | null = null
+      try { ch = h.changes ? JSON.parse(h.changes) : null } catch { ch = null }
+      const summary = ch
+        ? [ch.modified.length && `修改 ${ch.modified.length}`, ch.added.length && `新增 ${ch.added.length}`, ch.removed.length && `删除 ${ch.removed.length}`].filter(Boolean).join(' · ') || '无结构变化'
+        : h.number === 1 ? '（初始版本）' : '（无改动记录）'
+      const baseRef = h.base_version_id ? byId.get(h.base_version_id) : null
+      const head = `- **v${h.number}**${h.kind === 'variant' ? `（变体，基于 v${baseRef?.number ?? '?'}）` : ''} · ${h.pushed_by_name ?? '?'} · ${fmtTime(h.created_at)} · ${summary}${h.notes ? ` · 备注: ${h.notes}` : ''}`
+      parts.push(head)
+      // 最近 3 个版本给改动明细
+      if (ch && idx < 3) {
+        for (const m of ch.modified.slice(0, 8)) parts.push(`  - ~ \`<${m.tag} ${m.id}>\` “${m.from}” → “${m.to}”`)
+        for (const a of ch.added.slice(0, 5)) parts.push(`  - + \`<${a.tag} ${a.id}>\` “${a.text}”`)
+        for (const r of ch.removed.slice(0, 5)) parts.push(`  - − \`<${r.tag} ${r.id}>\` “${r.text}”`)
+      }
+      const solved = intentsByVersion.get(h.id) ?? []
+      for (const s of solved.slice(0, 5)) {
+        const c = JSON.parse(s.content || '{}')
+        parts.push(`  - ✓ 解决意图: “${(c.text ?? '').slice(0, 60)}”（${s.created_name} 提出）`)
+      }
+    })
+  }
 
   // 画布意图卡（结构化待办，处理后 push --resolves <id> 回流状态）
   const intents = canvasObjects.filter((o) => o.type === 'intent' && o.status !== 'resolved')

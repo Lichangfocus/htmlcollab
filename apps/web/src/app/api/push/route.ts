@@ -1,6 +1,7 @@
 import { anyUser } from '@/lib/auth'
 import { getDb } from '@/lib/db'
 import { instrument } from '@/lib/instrument'
+import { computeChanges } from '@/lib/diff'
 import { roleFor, canEdit } from '@/lib/perm'
 import { ensureCanvas, nextSeq } from '@/lib/canvas'
 import { json, uid, now } from '@/lib/util'
@@ -64,13 +65,22 @@ export async function POST(req: Request) {
   const base: string | null = body.base ?? latestMainline?.id ?? null
   const kind = latestMainline && body.base && body.base !== latestMainline.id ? 'variant' : 'mainline'
 
+  // 迭代元数据：相对 base 版本 diff 出"这次改了什么"（agent 持续修改的关键上下文）
+  let changes: string | null = null
+  if (base) {
+    const baseRow = await db.prepare('SELECT html FROM versions WHERE id = ?').bind(base).first<{ html: string }>()
+    if (baseRow) {
+      try { changes = JSON.stringify(computeChanges(baseRow.html, result.html)) } catch { changes = null }
+    }
+  }
+
   const number = (last?.n ?? 0) + 1
   const versionId = uid(10)
   await db
     .prepare(
-      'INSERT INTO versions (id, page_id, number, html, notes, created_at, base_version_id, kind, pushed_by_name) VALUES (?,?,?,?,?,?,?,?,?)'
+      'INSERT INTO versions (id, page_id, number, html, notes, created_at, base_version_id, kind, pushed_by_name, changes) VALUES (?,?,?,?,?,?,?,?,?,?)'
     )
-    .bind(versionId, page.id, number, result.html, body.notes ?? null, now(), base, kind, user.name)
+    .bind(versionId, page.id, number, result.html, body.notes ?? null, now(), base, kind, user.name, changes)
     .run()
 
   // resolves：把意图卡标记为已解决并关联版本

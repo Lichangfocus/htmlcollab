@@ -1,5 +1,5 @@
 import { getDb } from '@/lib/db'
-import { buildContext, type CommentRow } from '@/lib/context'
+import { buildContext, type CommentRow, type VersionHistoryRow } from '@/lib/context'
 import { ensureCanvas, getObjects } from '@/lib/canvas'
 import { json } from '@/lib/util'
 
@@ -28,8 +28,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
   const canvas = await ensureCanvas(db, page.id)
   const objects = (await getObjects(db, canvas.id)).filter((o) => !o.deleted)
 
+  // 版本历史（迭代元数据）
+  const { results: history } = await db
+    .prepare('SELECT id, number, kind, base_version_id, pushed_by_name, created_at, notes, changes FROM versions WHERE page_id = ? ORDER BY number ASC')
+    .bind(page.id)
+    .all<VersionHistoryRow>()
+
   const url = new URL(req.url)
-  const md = buildContext(page, version, results, url.origin, objects)
+  const md = buildContext(page, version, results, url.origin, objects, history)
 
   if (url.searchParams.get('format') === 'json') {
     return json({ page: { slug: page.slug, title: page.title }, version: version.number, markdown: md })
