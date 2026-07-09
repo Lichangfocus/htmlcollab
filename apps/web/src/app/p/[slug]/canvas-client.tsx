@@ -646,20 +646,31 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     return set
   }, [frames, t, focusId])
 
-  /* ================= 协作动态流（统一 feed） ================= */
+  /* ================= 协作动态：待处理 / 已处理两段式 ================= */
 
-  type FeedItem =
-    | { kind: 'version'; time: string; v: VersionInfo }
-    | { kind: 'comment'; time: string; c: Comment }
-    | { kind: 'intent'; time: string; o: CObj }
+  type PendingItem = { kind: 'comment'; time: string; c: Comment } | { kind: 'intent'; time: string; o: CObj }
 
-  const feed = useMemo<FeedItem[]>(() => {
-    const items: FeedItem[] = []
-    for (const v of versions) items.push({ kind: 'version', time: v.created_at, v })
-    for (const c of comments.filter((x) => !x.parent_id)) items.push({ kind: 'comment', time: c.created_at, c })
-    for (const o of intents) items.push({ kind: 'intent', time: o.updated_at, o })
+  const tops2 = useMemo(() => comments.filter((x) => !x.parent_id), [comments])
+
+  const pending = useMemo<PendingItem[]>(() => {
+    const items: PendingItem[] = []
+    for (const c of tops2.filter((x) => x.status === 'open')) items.push({ kind: 'comment', time: c.created_at, c })
+    for (const o of intents.filter((x) => x.status !== 'resolved')) items.push({ kind: 'intent', time: o.updated_at, o })
     return items.sort((a, b) => b.time.localeCompare(a.time))
-  }, [versions, comments, intents])
+  }, [tops2, intents])
+
+  const resolvedComments = useMemo(() => tops2.filter((x) => x.status === 'resolved'), [tops2])
+  const versionEvents = useMemo(() => [...versions].sort((a, b) => b.number - a.number), [versions])
+
+  // “新”标记：上次访问之后出现的条目
+  const [lastSeen] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    const key = `hc_seen_${slug}`
+    const prev = localStorage.getItem(key) ?? ''
+    localStorage.setItem(key, new Date().toISOString())
+    return prev
+  })
+  const isNew = (time: string) => !!lastSeen && time > lastSeen
 
   const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id)
   const focusedFrame = frames.find((f) => f.v.id === focusId)
@@ -898,58 +909,30 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
             <div className="cv-panel-tip">正在标注：点选左侧页面中的任意元素 → 原位输入评论或修改要求</div>
           )}
           <div className="cv-list">
-            {feed.length === 0 && <div className="empty">还没有动态——点「✍️ 标注」开始</div>}
-            {feed.map((item) => {
-              if (item.kind === 'version') {
-                const v = item.v
-                const ch = parseChanges(v.changes)
-                const summary = changesSummary(ch)
-                const baseRef = v.base_version_id ? versions.find((x) => x.id === v.base_version_id) : null
-                const solved = intents.filter((o) => o.resolved_version_id === v.id)
-                const open = expanded.has('v' + v.id)
-                return (
-                  <div key={'v' + v.id} className="cv-feed-version" onClick={() => focusFrame(v.id)}>
-                    <div className="cv-feed-meta">
-                      <span className="cv-avatar" style={{ background: '#4f46e5' }}>🚀</span>
-                      <b>{v.pushed_by_name ?? '系统'}</b> 发布了 <b>v{v.number}</b>
-                      {v.kind === 'variant' && <span className="cv-varchip">变体{baseRef ? ` · 基于 v${baseRef.number}` : ''}</span>}
-                      <span className="time">{fmt(v.created_at)}</span>
-                    </div>
-                    {(summary || v.notes) && (
-                      <div className="cv-feed-body">
-                        {summary && <span className="cv-change-sum">{summary}</span>}
-                        {v.notes && <span className="cv-feed-notes">{v.notes}</span>}
-                        {ch && (ch.modified?.length || ch.added?.length || ch.removed?.length) ? (
-                          <button className="link-btn" onClick={(e) => { e.stopPropagation(); toggleExpand('v' + v.id) }}>{open ? '收起' : '改动明细'}</button>
-                        ) : null}
-                      </div>
-                    )}
-                    {open && ch && (
-                      <div className="cv-change-list" onClick={(e) => e.stopPropagation()}>
-                        {ch.modified?.map((m, i) => <div key={'m' + i}>~ <code>&lt;{m.tag}&gt;</code> “{m.from}” → “{m.to}”</div>)}
-                        {ch.added?.map((a, i) => <div key={'a' + i} className="add">+ <code>&lt;{a.tag}&gt;</code> “{a.text}”</div>)}
-                        {ch.removed?.map((r, i) => <div key={'r' + i} className="del">− <code>&lt;{r.tag}&gt;</code> “{r.text}”</div>)}
-                      </div>
-                    )}
-                    {solved.length > 0 && (
-                      <div className="cv-feed-solved">✓ 解决了 {solved.length} 项标注</div>
-                    )}
-                    {v.kind === 'variant' && canEdit && (
-                      <div onClick={(e) => e.stopPropagation()}><button className="link-btn" onClick={() => promote(v.id)}>↑ 设为主线</button></div>
-                    )}
-                  </div>
-                )
-              }
+            {/* ===== 待处理：新收到的评注与修改标注 ===== */}
+            <div className="cv-sec-head">
+              <b>待处理</b>
+              {pending.length > 0 && <span className="cv-sec-count">{pending.length}</span>}
+              <span className="spacer" />
+              {me && pending.length > 1 && (
+                <button className="link-btn" onClick={() => setBasket(new Set(pending.map((i) => (i.kind === 'intent' ? i.o.id : 'c:' + i.c.id))))}>
+                  全选生成指令
+                </button>
+              )}
+            </div>
+            {pending.length === 0 && <div className="empty">没有待处理反馈——点「✍️ 标注」在页面上圈点</div>}
+            {pending.map((item) => {
               if (item.kind === 'comment') {
                 const c = item.c
                 return (
-                  <div key={'c' + c.id} className={`cv-feed-item ${c.status}`}
+                  <div key={'c' + c.id} className="cv-feed-item"
                     onClick={() => { if (c.anchored && c.cc_id) toFocusedFrame({ type: 'scrollTo', ccId: c.cc_id }) }}>
                     <div className="cv-feed-meta">
-                      <input type="checkbox" checked={basket.has('c:' + c.id)} disabled={c.status !== 'open'} onChange={() => toggleBasket('c:' + c.id)} onClick={(e) => e.stopPropagation()} />
+                      <input type="checkbox" checked={basket.has('c:' + c.id)} onChange={() => toggleBasket('c:' + c.id)} onClick={(e) => e.stopPropagation()} />
                       <span className="cv-avatar" style={{ background: '#0891b2' }}>💬</span>
                       <b>{c.author_name}</b> 评论了
                       <span className={`el ${c.anchored === false ? 'orphan' : ''}`}>{c.anchored === false ? '⚠ ' : ''}&lt;{c.element_tag}&gt; {c.element_snippet?.slice(0, 16)}</span>
+                      {isNew(c.created_at) && <span className="cv-new">新</span>}
                       <span className="time">{fmt(c.created_at)}</span>
                     </div>
                     <div className="cv-feed-body">{c.body}</div>
@@ -958,13 +941,12 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
                     ))}
                     {me && (
                       <div className="actions" onClick={(e) => e.stopPropagation()}>
+                        <button className="link-btn strong" title="自动生成含元素锚点与源码定位的指令，粘给你的 agent 即可修改" onClick={() => generatePrompt([], [c])}>🤖 引用为指令</button>
                         <button className="link-btn" onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setReplyDraft('') }}>回复</button>
                         {(canEdit || c.author_id === me.id) && (
-                          <button className={`link-btn ${c.status === 'open' ? '' : 'grey'}`} onClick={() => resolveComment(c.id)}>
-                            {c.status === 'open' ? '✓ 解决' : '重开'}
-                          </button>
+                          <button className="link-btn" onClick={() => resolveComment(c.id)}>✓ 解决</button>
                         )}
-                        {c.status === 'open' && <button className="link-btn" onClick={() => threadToIntent(c)}>✏️ 转修改标注</button>}
+                        <button className="link-btn grey" onClick={() => threadToIntent(c)}>转修改标注</button>
                       </div>
                     )}
                     {replyTo === c.id && (
@@ -980,29 +962,96 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
               const o = item.o
               const anchor = pj<{ ccId?: string; tag?: string; snippet?: string; versionId?: string }>(o.anchor, {})
               const content = pj<{ intentType?: string; text?: string }>(o.content, {})
-              const rv = o.resolved_version_id ? versions.find((v) => v.id === o.resolved_version_id) : null
               return (
                 <div key={'o' + o.id} className={`cv-feed-item st-${o.status}`}
                   onClick={() => { if (anchor.versionId && anchor.ccId) { focusFrame(anchor.versionId); setTimeout(() => iframes.current.get(anchor.versionId!)?.contentWindow?.postMessage({ source: 'htmlcollab-shell', type: 'scrollTo', ccId: anchor.ccId }, '*'), 600) } }}>
                   <div className="cv-feed-meta">
-                    <input type="checkbox" checked={basket.has(o.id)} disabled={o.status === 'resolved'} onChange={() => toggleBasket(o.id)} onClick={(e) => e.stopPropagation()} />
+                    <input type="checkbox" checked={basket.has(o.id)} onChange={() => toggleBasket(o.id)} onClick={(e) => e.stopPropagation()} />
                     <span className="cv-avatar" style={{ background: '#d97706' }}>✏️</span>
                     <b>{o.created_name}</b> 标注修改
                     {anchor.ccId ? <span className="el">&lt;{anchor.tag}&gt; {anchor.snippet?.slice(0, 14)}</span> : <span className="el">整个页面</span>}
+                    {isNew(o.updated_at) && <span className="cv-new">新</span>}
                     <span className="time">{fmt(o.updated_at)}</span>
                   </div>
                   <div className="cv-feed-body">
                     <span className="cv-chip">{intentLabel(content.intentType)}</span> {content.text}
                   </div>
-                  <div className="cv-feed-status">
-                    {o.status === 'resolved' ? `✓ 已在 v${rv?.number ?? '?'} 解决` : o.status === 'claimed' ? `⏳ ${o.claimed_name} 的 agent 处理中` : '待处理'}
+                  <div className="cv-feed-status" onClick={(e) => e.stopPropagation()}>
+                    {o.status === 'claimed' ? `⏳ ${o.claimed_name} 的 agent 处理中` : '待处理'}
                     {me && o.status === 'open' && (
-                      <button className="link-btn" style={{ marginLeft: 10 }} onClick={(e) => { e.stopPropagation(); generatePrompt([o], []) }}>🤖 生成指令</button>
+                      <button className="link-btn strong" style={{ marginLeft: 10 }} onClick={() => generatePrompt([o], [])}>🤖 引用为指令</button>
                     )}
                   </div>
                 </div>
               )
             })}
+
+            {/* ===== 已处理记录：agent 每次优化的版本 + 该版本解决的反馈 ===== */}
+            <div className="cv-sec-head" style={{ marginTop: 18 }}>
+              <b>已处理记录</b>
+            </div>
+            {versionEvents.map((v) => {
+              const ch = parseChanges(v.changes)
+              const summary = changesSummary(ch)
+              const baseRef = v.base_version_id ? versions.find((x) => x.id === v.base_version_id) : null
+              const solved = intents.filter((o) => o.resolved_version_id === v.id)
+              const open = expanded.has('v' + v.id)
+              return (
+                <div key={'v' + v.id} className="cv-feed-version" onClick={() => focusFrame(v.id)}>
+                  <div className="cv-feed-meta">
+                    <span className="cv-avatar" style={{ background: '#4f46e5' }}>🚀</span>
+                    <b>{v.pushed_by_name ?? '系统'}</b> 发布了 <b>v{v.number}</b>
+                    {v.kind === 'variant' && <span className="cv-varchip">变体{baseRef ? ` · 基于 v${baseRef.number}` : ''}</span>}
+                    {isNew(v.created_at) && <span className="cv-new">新</span>}
+                    <span className="time">{fmt(v.created_at)}</span>
+                  </div>
+                  {(summary || v.notes) && (
+                    <div className="cv-feed-body">
+                      {summary && <span className="cv-change-sum">{summary}</span>}
+                      {v.notes && <span className="cv-feed-notes">{v.notes}</span>}
+                      {ch && (ch.modified?.length || ch.added?.length || ch.removed?.length) ? (
+                        <button className="link-btn" onClick={(e) => { e.stopPropagation(); toggleExpand('v' + v.id) }}>{open ? '收起' : '改动明细'}</button>
+                      ) : null}
+                    </div>
+                  )}
+                  {open && ch && (
+                    <div className="cv-change-list" onClick={(e) => e.stopPropagation()}>
+                      {ch.modified?.map((m, i) => <div key={'m' + i}>~ <code>&lt;{m.tag}&gt;</code> “{m.from}” → “{m.to}”</div>)}
+                      {ch.added?.map((a, i) => <div key={'a' + i} className="add">+ <code>&lt;{a.tag}&gt;</code> “{a.text}”</div>)}
+                      {ch.removed?.map((r, i) => <div key={'r' + i} className="del">− <code>&lt;{r.tag}&gt;</code> “{r.text}”</div>)}
+                    </div>
+                  )}
+                  {solved.map((s) => {
+                    const sc = pj<{ intentType?: string; text?: string }>(s.content, {})
+                    return (
+                      <div key={s.id} className="cv-feed-solved">
+                        ✓ <span className="cv-chip">{intentLabel(sc.intentType)}</span> “{(sc.text ?? '').slice(0, 40)}” — {s.created_name} 提出
+                      </div>
+                    )
+                  })}
+                  {v.kind === 'variant' && canEdit && (
+                    <div onClick={(e) => e.stopPropagation()}><button className="link-btn" onClick={() => promote(v.id)}>↑ 设为主线</button></div>
+                  )}
+                </div>
+              )
+            })}
+            {resolvedComments.map((c) => (
+              <div key={'rc' + c.id} className="cv-feed-item cv-done"
+                onClick={() => { if (c.anchored && c.cc_id) toFocusedFrame({ type: 'scrollTo', ccId: c.cc_id }) }}>
+                <div className="cv-feed-meta">
+                  <span className="cv-avatar" style={{ background: '#10b981' }}>✓</span>
+                  <b>{c.author_name}</b> 的评论已处理
+                  <span className="el">&lt;{c.element_tag}&gt; {c.element_snippet?.slice(0, 14)}</span>
+                  <span className="time">{fmt(c.created_at)}</span>
+                </div>
+                <div className="cv-feed-body cv-strike">{c.body}</div>
+                {me && (canEdit || c.author_id === me.id) && (
+                  <div className="actions" onClick={(e) => e.stopPropagation()}>
+                    <button className="link-btn grey" onClick={() => resolveComment(c.id)}>重开</button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </aside>
       )}
