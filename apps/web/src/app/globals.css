@@ -266,3 +266,37 @@ select.ver { border: 1px solid #d9d9e3; border-radius: 6px; padding: 4px 6px; fo
   .cv-basket { bottom: 48%; }
   .cv-popover { width: calc(100vw - 24px); left: 12px !important; }
 }
+
+/* ---- 版本时间轴下拉（顶栏） ---- */
+.cv-vermenu-wrap { position: relative; display: inline-flex; }
+.badge-v.clickable { border: 0; cursor: pointer; }
+.badge-v.clickable:hover { background: #dcdcf8; }
+.cv-vermenu { position: absolute; top: calc(100% + 8px); left: 0; z-index: 200; min-width: 250px; max-height: 330px; overflow-y: auto;
+  background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 6px; box-shadow: 0 14px 44px rgba(20,20,50,.18); }
+.cv-vermenu-item { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; text-align: left;
+  padding: 8px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.cv-vermenu-item:hover { background: #f2f2f8; }
+.cv-vermenu-item.on { background: #eef; }
+.cv-vermenu-meta { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.cv-latest-chip { font-size: 10px; background: #dcfce7; color: #15803d; padding: 1px 7px; border-radius: 99px; }
+
+/* ---- 角色徽章 ---- */
+.role-chip { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: #f1f1f6; color: #666; white-space: nowrap; }
+.role-chip.r-owner { background: #fef3c7; color: #b45309; }
+.role-chip.r-editor { background: #dcfce7; color: #15803d; }
+.role-chip.r-commenter { background: #e0f2fe; color: #0369a1; }
+
+/* ---- 新版本到达浮条 ---- */
+.cv-newver { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 150;
+  display: flex; align-items: center; gap: 12px; background: #1a1a2e; color: #fff; font-size: 13px;
+  border-radius: 99px; padding: 8px 10px 8px 18px; box-shadow: 0 10px 34px rgba(20,20,50,.35); animation: cv-toast-in .25s ease; }
+.cv-newver .cv-x { color: #aaa; }
+
+/* ---- 视野外回归 ---- */
+.cv-refocus { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 120;
+  border: 1px solid var(--border); background: #fff; color: var(--brand); font-size: 13px; font-weight: 600;
+  border-radius: 99px; padding: 10px 20px; box-shadow: 0 10px 34px rgba(20,20,50,.16); cursor: pointer; }
+.cv-refocus:hover { background: #eef; }
+
+/* ---- 归档变体 ---- */
+.cv-varchip.grey { background: #f1f1f6; color: #888; }

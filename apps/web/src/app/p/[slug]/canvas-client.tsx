@@ -91,7 +91,7 @@ const changesSummary = (c: Changes | null) => {
 interface FramePos { v: VersionInfo; x: number; y: number }
 
 function layoutFrames(versions: VersionInfo[]): FramePos[] {
-  const mains = versions.filter((v) => v.kind !== 'variant').sort((a, b) => a.number - b.number)
+  const mains = versions.filter((v) => v.kind !== 'variant' && v.kind !== 'archived').sort((a, b) => a.number - b.number)
   const byId = new Map(versions.map((v) => [v.id, v]))
   const col = new Map<string, number>()
   mains.forEach((v, i) => col.set(v.id, i))
@@ -142,15 +142,19 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [replyTo, setReplyTo] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
+  const [editingComment, setEditingComment] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState('')
   const [basket, setBasket] = useState<Set<string>>(new Set())
-  const [promptModal, setPromptModal] = useState<{ text: string; intentIds: string[] } | null>(null)
+  const [promptModal, setPromptModal] = useState<{ text: string; intentIds: string[]; basketKeys: string[] } | null>(null)
   const [claimOnCopy, setClaimOnCopy] = useState(true)
   const [copied, setCopied] = useState('')
   const [pageIntentOpen, setPageIntentOpen] = useState(false)
   const [pageIntentText, setPageIntentText] = useState('')
   const [pageIntentType, setPageIntentType] = useState('other')
   const [shareOpen, setShareOpen] = useState(false)
+  const [verMenuOpen, setVerMenuOpen] = useState(false)
   const [collabs, setCollabs] = useState<{ user_id: string; email: string; name: string; role: string }[]>([])
+  const [participants, setParticipants] = useState<{ user_id: string; email: string; name: string; last_active: string }[]>([])
   const [addEmail, setAddEmail] = useState(''); const [addRole, setAddRole] = useState('commenter'); const [shareErr, setShareErr] = useState('')
   const [editingNote, setEditingNote] = useState<string | null>(null)
 
@@ -180,7 +184,6 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
   const objList = useMemo(() => Object.values(objects).filter((o) => !o.deleted), [objects])
   const intents = useMemo(() => objList.filter((o) => o.type === 'intent'), [objList])
   const notes = useMemo(() => objList.filter((o) => o.type === 'note'), [objList])
-  const openIntentCount = intents.filter((i) => i.status !== 'resolved').length
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -201,30 +204,36 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     setTimeout(() => setAnimating(false), 380)
   }, [])
 
+  const fitDone = useRef(false)
+  const interacted = useRef(false) // 用户是否手动动过相机（此后 resize 不再自动聚焦）
+
+  // cv-root 自身已用 right 让出侧栏宽度，clientWidth 即可用区域——不要再减 PANEL_W
   const fitFrame = useCallback((vid: string, attempt = 0) => {
     const f = layoutFrames(versions).find((fp) => fp.v.id === vid)
-    const root = rootRef.current
     if (!f) return
-    if ((!root || root.clientWidth < 60 || root.clientHeight < 60) && attempt < 20) {
-      setTimeout(() => fitFrame(vid, attempt + 1), 100)
+    const root = rootRef.current
+    // 容器尚未有真实尺寸（CSS 未加载/布局未完成）时绝不计算相机，否则得到废相机（空白画布）
+    if (!root || root.clientWidth < 200 || root.clientHeight < 200) {
+      if (attempt < 50) setTimeout(() => fitFrame(vid, attempt + 1), 100)
       return
     }
-    if (!root) return
-    const rw = root.clientWidth - (panelOpen && !isMobile ? PANEL_W : 0)
+    fitDone.current = true
+    const rw = root.clientWidth
     const rh = root.clientHeight
     const z = Math.min(MAX_Z, Math.max(MIN_Z, Math.min(rw / FW, (rh - BAR) / (FH + BAR)) * 0.96))
     animateTo({ z, x: (rw - FW * z) / 2 - f.x * z, y: (rh - (FH + BAR) * z) / 2 - f.y * z + 10 })
-  }, [versions, panelOpen, isMobile, animateTo])
+  }, [versions, animateTo])
+  const fitFrameRef = useRef(fitFrame); fitFrameRef.current = fitFrame
 
   const fitAll = useCallback(() => {
     const root = rootRef.current
-    if (!root || !frames.length) return
+    if (!root || !frames.length || root.clientWidth < 200) return
     const maxX = Math.max(...frames.map((f) => f.x)) + FW
     const maxY = Math.max(...frames.map((f) => f.y)) + FH + BAR
-    const rw = root.clientWidth - (panelOpen && !isMobile ? PANEL_W : 0)
+    const rw = root.clientWidth
     const z = Math.min(MAX_Z, Math.max(MIN_Z, Math.min(rw / (maxX + 200), root.clientHeight / (maxY + 200), 1)))
     animateTo({ z, x: Math.max(40, (rw - maxX * z) / 2), y: 100 * z + 40 })
-  }, [frames, panelOpen, isMobile, animateTo])
+  }, [frames, animateTo])
 
   const focusFrame = useCallback((vid: string) => {
     setFocusId(vid)
@@ -245,6 +254,32 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 版本菜单点外关闭
+  useEffect(() => {
+    if (!verMenuOpen) return
+    const close = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest('.cv-vermenu-wrap')) setVerMenuOpen(false)
+    }
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [verMenuOpen])
+
+  // 兜底：容器尺寸变化（CSS 后到 / 侧栏插入 / 窗口 resize）且用户尚未手动操作画布时，
+  // 重新聚焦当前帧——初始 fit 在布局未稳定时算出的偏移相机由此自愈
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      if (interacted.current) return
+      if (root.clientWidth < 200 || root.clientHeight < 200) return
+      const target = focusRef.current ?? initialFocusId
+      if (target) fitFrameRef.current(target)
+    })
+    ro.observe(root)
+    return () => ro.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   /* ================= 数据同步 ================= */
 
   const mergeObjects = useCallback((changed: CObj[]) => {
@@ -261,6 +296,20 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     })
   }, [])
 
+  // 新版本到达提示（他人/自己的 agent push 后，开着页面的人立即知道）
+  const [newVer, setNewVer] = useState<VersionInfo | null>(null)
+  const knownVerIds = useRef<Set<string>>(new Set(initialVersions.map((v) => v.id)))
+  const verSig = (vs: VersionInfo[]) => vs.map((v) => `${v.id}:${v.kind}`).join('|')
+
+  const mergeVersions = useCallback((incoming: VersionInfo[]) => {
+    setVersions((prev) => (verSig(incoming) !== verSig(prev) ? incoming : prev))
+    const unseen = incoming.filter((v) => !knownVerIds.current.has(v.id))
+    if (unseen.length) {
+      for (const v of unseen) knownVerIds.current.add(v.id)
+      setNewVer(unseen.sort((a, b) => b.number - a.number)[0])
+    }
+  }, [])
+
   useEffect(() => {
     let stop = false
     fetch('/api/me').then((r) => r.json()).then((d) => {
@@ -274,17 +323,17 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       seqRef.current = d.maxSeq ?? 0
       mergeObjects(d.objects)
       setPresence(d.presence ?? [])
-      if (d.versions?.length) setVersions(d.versions)
+      if (d.versions?.length) mergeVersions(d.versions)
     })
     const timer = setInterval(async () => {
       const d = await fetch(`/api/p/${slug}/canvas/sync?since=${seqRef.current}`).then((r) => r.json()).catch(() => null)
       if (!d || stop) return
       mergeObjects(d.changed ?? [])
       setPresence(d.presence ?? [])
-      if (d.versions?.length) setVersions((prev) => (d.versions.length !== prev.length ? d.versions : prev))
+      if (d.versions?.length) mergeVersions(d.versions)
     }, 1500)
     return () => { stop = true; clearInterval(timer) }
-  }, [slug, mergeObjects])
+  }, [slug, mergeObjects, mergeVersions])
 
   const refreshComments = useCallback(async () => {
     const vid = focusRef.current ?? latestMain?.id
@@ -368,6 +417,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
   const onWheel = useCallback((e: React.WheelEvent) => {
     if ((e.target as HTMLElement).closest?.('.cv-panel, .modal, .cv-toolbar, .cv-popover, .cv-gate')) return
     e.preventDefault()
+    interacted.current = true
     const cur = tRef.current
     if (e.ctrlKey || e.metaKey) {
       const factor = Math.exp(-e.deltaY * 0.0022)
@@ -403,6 +453,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       if (!o) return
       dragRef.current = { kind: 'obj', id, sx: e.clientX, sy: e.clientY, ox: o.x, oy: o.y, moved: false }
     } else if (el.closest('.cv-pannable')) {
+      interacted.current = true
       dragRef.current = { kind: 'pan', sx: e.clientX, sy: e.clientY, ox: tRef.current.x, oy: tRef.current.y, moved: false }
     } else return
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -509,6 +560,22 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
     refreshComments()
   }
 
+  async function deleteComment(c: Comment) {
+    if (!confirm(c.parent_id ? '删除这条回复？' : '删除这条评论及其所有回复？')) return
+    const res = await fetch(`/api/comments/${c.id}`, { method: 'DELETE' })
+    if (!res.ok) { showToast((await res.json()).error ?? '删除失败'); return }
+    setBasket((prev) => { const n = new Set(prev); n.delete('c:' + c.id); return n })
+    refreshComments()
+  }
+
+  async function saveCommentEdit(id: string) {
+    if (!editDraft.trim()) return
+    const res = await fetch(`/api/comments/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: editDraft }) })
+    if (!res.ok) { showToast((await res.json()).error ?? '保存失败'); return }
+    setEditingComment(null); setEditDraft('')
+    refreshComments()
+  }
+
   async function threadToIntent(c: Comment) {
     if (!requireAuth()) return
     const replies = comments.filter((r) => r.parent_id === c.id)
@@ -547,9 +614,11 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       const lines = [`## ${i}. [评论] <${c.element_tag} data-cc-id="${c.cc_id}">${c.element_snippet ? `（“${c.element_snippet}”）` : ''}`]
       lines.push(`- ${c.author_name}（${fmt(c.created_at)}）: ${c.body}`)
       for (const r of replies) lines.push(`  - ${r.author_name}（${fmt(r.created_at)}）: ${r.body}`)
+      lines.push(`评论 id: ${c.id}`)
       items.push(lines.join('\n'))
     }
-    const resolveIds = intentObjs.map((o) => o.id).join(',')
+    // 意图卡与评论都能被 push --resolves 关联解决（服务端按 id 类型自动识别）
+    const resolveIds = [...intentObjs.map((o) => o.id), ...threadTops.map((c) => c.id)].join(',')
     return [
       `请处理在线协作页面的以下 ${i} 项反馈（htmlcollab）：`,
       ``,
@@ -562,14 +631,18 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       `2. 获取页面源码: curl ${origin}/api/p/${slug}/html -o page.html（本地已有项目源文件则直接改）`,
       `3. 修改时保留所有 data-cc-id 属性（评论锚点）`,
       `4. 发布: npx htmlcollab-cli push page.html --slug ${slug} --server ${origin} --base ${latestMain?.id}${resolveIds ? ` --resolves ${resolveIds}` : ''}`,
-      `   （需编辑权限；--resolves 会把画布上的标注自动标记为已解决）`,
+      `   （需编辑权限；--resolves 会把上面的标注与评论自动标记为已解决，评审者实时看到）`,
     ].join('\n')
   }
 
   async function generatePrompt(intentObjs: CObj[], threadTops: Comment[]) {
     const text = buildPrompt(intentObjs, threadTops)
     try { await navigator.clipboard.writeText(text) } catch { /* modal 里可手动复制 */ }
-    setPromptModal({ text, intentIds: intentObjs.map((o) => o.id).filter(Boolean) })
+    setPromptModal({
+      text,
+      intentIds: intentObjs.map((o) => o.id).filter(Boolean),
+      basketKeys: [...intentObjs.map((o) => o.id), ...threadTops.map((c) => 'c:' + c.id)],
+    })
   }
 
   async function confirmPrompt() {
@@ -579,21 +652,34 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
         if (o && o.status === 'open') await pushObject({ id, claim: true })
       }
     }
+    // 只清掉这次打包的条目，不动用户手动多选中的其他项
+    if (promptModal) {
+      const used = new Set(promptModal.basketKeys)
+      setBasket((prev) => new Set([...prev].filter((k) => !used.has(k))))
+    }
     setPromptModal(null)
-    setBasket(new Set())
   }
 
   async function promote(vid: string) {
     if (!confirm('把这个变体设为新的主线版本？')) return
     await fetch(`/api/versions/${vid}/promote`, { method: 'POST' })
     const d = await fetch(`/api/p/${slug}/canvas`).then((r) => r.json())
-    if (d.versions) setVersions(d.versions)
+    if (d.versions) mergeVersions(d.versions)
+  }
+
+  async function archiveVersion(vid: string, restore = false) {
+    if (!restore && !confirm('归档这个变体？画布上不再显示（历史保留，可在动态里恢复）')) return
+    const res = await fetch(`/api/versions/${vid}/archive`, { method: 'POST' })
+    if (!res.ok) { showToast((await res.json()).error ?? '操作失败'); return }
+    setVersions((prev) => prev.map((v) => (v.id === vid ? { ...v, kind: restore ? 'variant' : 'archived' } : v)))
+    if (!restore && focusRef.current === vid && latestMain) focusFrame(latestMain.id)
   }
 
   async function openShare() {
     setShareOpen(true)
     const d = await fetch(`/api/p/${slug}/collaborators`).then((r) => r.json())
     setCollabs(d.collaborators ?? [])
+    setParticipants(d.participants ?? [])
   }
   async function addCollab(e: React.FormEvent) {
     e.preventDefault(); setShareErr('')
@@ -675,6 +761,23 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
   const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id)
   const focusedFrame = frames.find((f) => f.v.id === focusId)
 
+  // 标签页标题带未读数：切走的评审者/创作者能看到有新反馈
+  useEffect(() => {
+    document.title = pending.length ? `(${pending.length}) ${title}` : title
+  }, [pending.length, title])
+
+  // 相机自愈提示：内容完全不在视野内时给一个"回到内容"入口
+  const contentVisible = useMemo(() => {
+    const root = rootRef.current
+    if (!root || !frames.length || root.clientWidth < 10) return true
+    const rw = root.clientWidth, rh = root.clientHeight
+    return frames.some((f) => {
+      const sx = f.x * t.z + t.x, sy = f.y * t.z + t.y
+      const sw = FW * t.z, sh = (FH + BAR) * t.z
+      return sx < rw && sy < rh && sx + sw > 0 && sy + sh > 0
+    })
+  }, [frames, t])
+
   /* ---- 标注弹窗屏幕坐标 ---- */
   const popoverPos = useMemo(() => {
     if (!selected?.rect || !focusedFrame) return null
@@ -725,7 +828,10 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
                 <span className="cv-frame-meta">{f.v.pushed_by_name ?? ''} · {fmt(f.v.created_at)}{changesSummary(parseChanges(f.v.changes)) ? ` · ${changesSummary(parseChanges(f.v.changes))}` : ''}</span>
                 <span className="spacer" />
                 {f.v.kind === 'variant' && canEdit && (
-                  <button className="cv-mini-btn" onClick={() => promote(f.v.id)}>↑ 设为主线</button>
+                  <>
+                    <button className="cv-mini-btn" onClick={() => promote(f.v.id)}>↑ 设为主线</button>
+                    <button className="cv-mini-btn" title="从画布上收起（历史保留，可在动态里恢复）" onClick={() => archiveVersion(f.v.id)}>归档</button>
+                  </>
                 )}
                 {!isFocused && <button className="cv-mini-btn" onClick={() => focusFrame(f.v.id)}>进入</button>}
               </div>
@@ -864,14 +970,39 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
       <header className="cv-toolbar">
         <Link href="/dashboard" className="brand">◈</Link>
         <span className="cv-title">{title}</span>
-        {focusedFrame && <span className="badge-v">v{focusedFrame.v.number}{focusedFrame.v.kind === 'variant' ? ' 变体' : ''}</span>}
+        {!isMobile && (
+          <span className="cv-vermenu-wrap">
+            <button className="badge-v clickable" onClick={() => setVerMenuOpen((o) => !o)} title="版本时间轴：点击跳转任意版本">
+              v{(focusedFrame ?? { v: latestMain }).v?.number}
+              {focusedFrame?.v.kind === 'variant' ? ' 变体' : ''} ▾
+            </button>
+            {verMenuOpen && (
+              <div className="cv-vermenu" onPointerDown={(e) => e.stopPropagation()}>
+                {[...versions].filter((v) => v.kind !== 'archived').sort((a, b) => b.number - a.number).map((v) => (
+                  <button key={v.id} className={`cv-vermenu-item ${focusId === v.id ? 'on' : ''}`}
+                    onClick={() => { setVerMenuOpen(false); focusFrame(v.id) }}>
+                    <b>v{v.number}</b>
+                    {v.kind === 'variant' && <span className="cv-varchip">变体{(() => { const b = versions.find((x) => x.id === v.base_version_id); return b ? `·基于v${b.number}` : '' })()}</span>}
+                    {v.id === latestMain?.id && <span className="cv-latest-chip">最新</span>}
+                    <span className="cv-vermenu-meta">{v.pushed_by_name ?? ''} · {fmt(v.created_at)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </span>
+        )}
+        {me && role !== 'anon' && (
+          <span className={`role-chip r-${role}`} title={role === 'owner' ? '你是页面创建者：可管理协作者、发布版本、删除页面' : role === 'editor' ? '可编辑：你的 agent 可以直接 push 新版本' : '可评论：可以评论与标注；需要 push 权限请找创建者提权'}>
+            {role === 'owner' ? '创建者' : role === 'editor' ? '可编辑' : '可评论'}
+          </span>
+        )}
         <span className="cv-divider" />
         {!isMobile && (
           <>
             <div className="cv-zoom">
-              <button onClick={() => setT((c) => ({ ...c, z: Math.max(MIN_Z, c.z / 1.25) }))}>−</button>
+              <button onClick={() => { interacted.current = true; setT((c) => ({ ...c, z: Math.max(MIN_Z, c.z / 1.25) })) }}>−</button>
               <span>{Math.round(t.z * 100)}%</span>
-              <button onClick={() => setT((c) => ({ ...c, z: Math.min(MAX_Z, c.z * 1.25) }))}>＋</button>
+              <button onClick={() => { interacted.current = true; setT((c) => ({ ...c, z: Math.min(MAX_Z, c.z * 1.25) })) }}>＋</button>
             </div>
             {focusId ? (
               <button className="btn sm" onClick={exitFocus}>⤢ 画布</button>
@@ -882,7 +1013,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
         )}
         {isMobile && versions.length > 1 && (
           <select className="ver" value={focusId ?? ''} onChange={(e) => focusFrame(e.target.value)}>
-            {[...versions].sort((a, b) => b.number - a.number).map((v) => (
+            {[...versions].filter((v) => v.kind !== 'archived').sort((a, b) => b.number - a.number).map((v) => (
               <option key={v.id} value={v.id}>v{v.number}{v.kind === 'variant' ? ' 变体' : ''}</option>
             ))}
           </select>
@@ -901,7 +1032,7 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
         <aside className="cv-panel">
           <div className="cv-panel-head">
             <b>协作动态</b>
-            <span className="count">{openIntentCount ? `${openIntentCount} 项待处理` : ''}</span>
+            <span className="count">{pending.length ? `${pending.length} 项待处理` : ''}</span>
             <span className="spacer" />
             {me && !isMobile && <button className="link-btn" onClick={() => { setPageIntentText(''); setPageIntentOpen(true) }}>+ 页面级标注</button>}
           </div>
@@ -935,11 +1066,31 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
                       {isNew(c.created_at) && <span className="cv-new">新</span>}
                       <span className="time">{fmt(c.created_at)}</span>
                     </div>
-                    <div className="cv-feed-body">{c.body}</div>
+                    {editingComment === c.id ? (
+                      <div className="reply-box" onClick={(e) => e.stopPropagation()}>
+                        <textarea className="input" rows={2} autoFocus value={editDraft}
+                          onChange={(e) => setEditDraft(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveCommentEdit(c.id) } }} />
+                        <div className="actions">
+                          <button className="link-btn" onClick={() => saveCommentEdit(c.id)}>保存</button>
+                          <button className="link-btn grey" onClick={() => { setEditingComment(null); setEditDraft('') }}>取消</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="cv-feed-body">{c.body}</div>
+                    )}
                     {repliesOf(c.id).map((r) => (
-                      <div className="msg reply" key={r.id}><div className="meta">{r.author_name} · {fmt(r.created_at)}</div>{r.body}</div>
+                      <div className="msg reply" key={r.id}>
+                        <div className="meta">
+                          {r.author_name} · {fmt(r.created_at)}
+                          {me && (r.author_id === me.id || canEdit) && (
+                            <button className="cv-x" style={{ marginLeft: 6 }} onClick={(e) => { e.stopPropagation(); deleteComment(r) }}>✕</button>
+                          )}
+                        </div>
+                        {r.body}
+                      </div>
                     ))}
-                    {me && (
+                    {me && editingComment !== c.id && (
                       <div className="actions" onClick={(e) => e.stopPropagation()}>
                         <button className="link-btn strong" title="自动生成含元素锚点与源码定位的指令，粘给你的 agent 即可修改" onClick={() => generatePrompt([], [c])}>🤖 引用为指令</button>
                         <button className="link-btn" onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setReplyDraft('') }}>回复</button>
@@ -947,6 +1098,12 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
                           <button className="link-btn" onClick={() => resolveComment(c.id)}>✓ 解决</button>
                         )}
                         <button className="link-btn grey" onClick={() => threadToIntent(c)}>转修改标注</button>
+                        {c.author_id === me.id && (
+                          <button className="link-btn grey" onClick={() => { setEditingComment(c.id); setEditDraft(c.body) }}>编辑</button>
+                        )}
+                        {(canEdit || c.author_id === me.id) && (
+                          <button className="link-btn grey" onClick={() => deleteComment(c)}>删除</button>
+                        )}
                       </div>
                     )}
                     {replyTo === c.id && (
@@ -996,12 +1153,14 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
               const baseRef = v.base_version_id ? versions.find((x) => x.id === v.base_version_id) : null
               const solved = intents.filter((o) => o.resolved_version_id === v.id)
               const open = expanded.has('v' + v.id)
+              const archived = v.kind === 'archived'
               return (
-                <div key={'v' + v.id} className="cv-feed-version" onClick={() => focusFrame(v.id)}>
+                <div key={'v' + v.id} className={`cv-feed-version ${archived ? 'cv-done' : ''}`} onClick={() => { if (!archived) focusFrame(v.id) }}>
                   <div className="cv-feed-meta">
-                    <span className="cv-avatar" style={{ background: '#4f46e5' }}>🚀</span>
+                    <span className="cv-avatar" style={{ background: archived ? '#9ca3af' : '#4f46e5' }}>🚀</span>
                     <b>{v.pushed_by_name ?? '系统'}</b> 发布了 <b>v{v.number}</b>
                     {v.kind === 'variant' && <span className="cv-varchip">变体{baseRef ? ` · 基于 v${baseRef.number}` : ''}</span>}
+                    {archived && <span className="cv-varchip grey">已归档</span>}
                     {isNew(v.created_at) && <span className="cv-new">新</span>}
                     <span className="time">{fmt(v.created_at)}</span>
                   </div>
@@ -1030,7 +1189,15 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
                     )
                   })}
                   {v.kind === 'variant' && canEdit && (
-                    <div onClick={(e) => e.stopPropagation()}><button className="link-btn" onClick={() => promote(v.id)}>↑ 设为主线</button></div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <button className="link-btn" onClick={() => promote(v.id)}>↑ 设为主线</button>
+                      <button className="link-btn grey" onClick={() => archiveVersion(v.id)}>归档</button>
+                    </div>
+                  )}
+                  {archived && canEdit && (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <button className="link-btn" onClick={() => archiveVersion(v.id, true)}>恢复到画布</button>
+                    </div>
                   )}
                 </div>
               )
@@ -1054,6 +1221,22 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
             ))}
           </div>
         </aside>
+      )}
+
+      {/* ===== 新版本到达浮条 ===== */}
+      {newVer && (
+        <div className="cv-newver">
+          🚀 {newVer.pushed_by_name ?? '有人'} 发布了 <b>v{newVer.number}</b>{newVer.kind === 'variant' ? '（变体）' : ''}
+          <button className="btn primary sm" onClick={() => { focusFrame(newVer.id); setNewVer(null) }}>查看</button>
+          <button className="cv-x" onClick={() => setNewVer(null)}>✕</button>
+        </div>
+      )}
+
+      {/* ===== 视野外回归 ===== */}
+      {!contentVisible && (
+        <button className="cv-refocus" onClick={() => latestMain && focusFrame(latestMain.id)}>
+          ◎ 内容不在视野内 · 回到最新版本
+        </button>
       )}
 
       {/* ===== 底部生成条 ===== */}
@@ -1161,6 +1344,21 @@ export default function CanvasClient({ slug, title, initialVersions, initialFocu
               <button className="btn primary sm">添加</button>
             </form>
             {shareErr && <p className="error-text" style={{ marginTop: 8 }}>{shareErr}</p>}
+            {participants.length > 0 && (
+              <>
+                <p className="modal-sub" style={{ marginTop: 18, marginBottom: 6 }}>通过链接参与的人（默认可评论，可在此提权）</p>
+                {participants.map((p) => (
+                  <div className="collab-row" key={p.user_id}>
+                    <span className="who">{p.name} <span className="mail">{p.email}</span></span>
+                    <span className="mail">{fmt(p.last_active)} 活跃</span>
+                    <button className="link-btn" onClick={async () => {
+                      await fetch(`/api/p/${slug}/collaborators`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: p.email, role: 'editor' }) })
+                      openShare()
+                    }}>设为可编辑</button>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
       )}

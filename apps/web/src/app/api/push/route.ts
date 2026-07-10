@@ -83,7 +83,7 @@ export async function POST(req: Request) {
     .bind(versionId, page.id, number, result.html, body.notes ?? null, now(), base, kind, user.name, changes)
     .run()
 
-  // resolves：把意图卡标记为已解决并关联版本
+  // resolves：id 可以是意图卡或评论线程，push 后两者都标记为已解决并关联版本
   const resolves: string[] = Array.isArray(body.resolves) ? body.resolves.filter(Boolean) : []
   let resolved = 0
   if (resolves.length) {
@@ -97,7 +97,25 @@ export async function POST(req: Request) {
         )
         .bind(versionId, now(), seq, objId, canvas.id)
         .run() as { meta?: { changes?: number } }
-      resolved += r?.meta?.changes ?? 0
+      const hit = r?.meta?.changes ?? 0
+      resolved += hit
+      if (!hit) {
+        const c = await db
+          .prepare(`UPDATE comments SET status='resolved' WHERE id=? AND page_id=? AND parent_id IS NULL AND status='open'`)
+          .bind(objId, page.id)
+          .run() as { meta?: { changes?: number } }
+        if (c?.meta?.changes) {
+          resolved += c.meta.changes
+          // 给评论线程留一条 agent 的答复，评审者在网页端能看到闭环
+          await db
+            .prepare(
+              `INSERT INTO comments (id, page_id, version_id, cc_id, element_tag, element_snippet, body, author_id, author_name, parent_id, status, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+            )
+            .bind(uid(10), page.id, versionId, null, '', '', `已在 v${number} 中处理`, user.id, user.name, objId, 'open', now())
+            .run()
+        }
+      }
     }
   }
 

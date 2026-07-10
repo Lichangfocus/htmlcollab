@@ -12,7 +12,10 @@ interface PageRow {
   latest_version: number
   open_comments: number
   total_comments: number
+  my_role?: string
 }
+
+const ROLE_LABEL: Record<string, string> = { editor: '可编辑', commenter: '可评论' }
 
 interface Me { id: string; email: string; name: string; apiToken: string }
 
@@ -20,13 +23,18 @@ export default function Dashboard() {
   const router = useRouter()
   const [me, setMe] = useState<Me | null>(null)
   const [pages, setPages] = useState<PageRow[] | null>(null)
+  const [shared, setShared] = useState<PageRow[]>([])
 
   async function load() {
     const meRes = await fetch('/api/me').then((r) => r.json())
     if (!meRes.user) return router.push('/login')
     setMe(meRes.user)
     const res = await fetch('/api/pages')
-    if (res.ok) setPages((await res.json()).pages)
+    if (res.ok) {
+      const d = await res.json()
+      setPages(d.pages)
+      setShared(d.shared ?? [])
+    }
   }
 
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -76,6 +84,25 @@ export default function Dashboard() {
               <button className="btn sm" style={{ color: '#dc2626', borderColor: '#fca5a5' }} onClick={() => remove(p)}>删除</button>
             </div>
           ))
+        )}
+
+        {shared.length > 0 && (
+          <>
+            <h1 style={{ marginTop: 36 }}>与我协作的页面</h1>
+            <p className="sub">别人分享给你、或你参与过评论的页面</p>
+            {shared.map((p) => (
+              <div className="page-card" key={p.id}>
+                <div className="info">
+                  <div className="name">{p.title} <span className="role-chip">{ROLE_LABEL[p.my_role ?? ''] ?? '可评论'}</span></div>
+                  <div className="meta">
+                    v{p.latest_version} · <b>{p.open_comments}</b> 条待处理评论 / {p.total_comments} 总计 · {new Date(p.created_at).toLocaleDateString('zh-CN')}
+                  </div>
+                </div>
+                <Link className="btn sm" href={`/p/${p.slug}`} target="_blank">打开</Link>
+                <button className="btn sm" onClick={() => copy(`${location.origin}/p/${p.slug}`)}>复制链接</button>
+              </div>
+            ))}
+          </>
         )}
 
         {me && (

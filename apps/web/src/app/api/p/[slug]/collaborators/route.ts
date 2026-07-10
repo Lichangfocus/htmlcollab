@@ -29,7 +29,27 @@ export async function GET(_req: Request, ctx: { params: Promise<{ slug: string }
     )
     .bind(page!.id)
     .all()
-  return json({ collaborators })
+
+  // 通过链接参与过的人（评论/画布对象），尚未被显式设为协作者——owner 可一键给权限
+  const { results: participants } = await db
+    .prepare(
+      `SELECT u.id AS user_id, u.email, u.name, MAX(t.at) AS last_active
+       FROM (
+         SELECT author_id AS uid, created_at AS at FROM comments WHERE page_id = ?1
+         UNION ALL
+         SELECT o.created_by AS uid, o.updated_at AS at
+           FROM canvas_objects o JOIN canvases cv ON cv.id = o.canvas_id
+          WHERE cv.page_id = ?1
+       ) t
+       JOIN users u ON u.id = t.uid
+       WHERE u.id != ?2
+         AND u.id NOT IN (SELECT user_id FROM collaborators WHERE page_id = ?1)
+       GROUP BY u.id ORDER BY last_active DESC LIMIT 30`
+    )
+    .bind(page!.id, page!.owner_id)
+    .all()
+
+  return json({ collaborators, participants })
 }
 
 /** 添加/更新协作者：{email, role: 'commenter'|'editor'}；用户不存在时按邮箱自动建档 */

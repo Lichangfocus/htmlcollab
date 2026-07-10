@@ -72,7 +72,7 @@ export function buildContext(
 
   const thread = (c: CommentRow, i: number) => {
     const lines: string[] = []
-    lines.push(`### ${i + 1}. \`<${c.element_tag || '?'} data-cc-id="${c.cc_id}">\``)
+    lines.push(`### ${i + 1}. \`<${c.element_tag || '?'} data-cc-id="${c.cc_id}">\` · 评论 id: ${c.id}`)
     if (c.element_snippet) lines.push(`> 元素内容片段: “${c.element_snippet}”`)
     lines.push(`- **${c.author_name}** (${fmtTime(c.created_at)}): ${c.body}`)
     for (const r of replies(c.id)) {
@@ -90,6 +90,7 @@ export function buildContext(
     `1. 修改 HTML 时必须保留所有 \`data-cc-id\` 属性 —— 它们是评论的锚点，删除会导致反馈丢失定位。新增元素不需要自己加。`,
     `2. 逐条处理下方“待处理反馈”，可合并处理同一元素上的多条意见。`,
     `3. 处理完毕后运行 \`npx htmlcollab-cli push\` 发布新版本，评审者会在同一链接看到 v${version.number + 1}。`,
+    `4. push 时带 \`--resolves <id>,<id>\`（评论 id 与意图卡 id 都支持），处理过的反馈会自动标记为已解决并通知评审者。`,
     ``,
     `## 待处理反馈 (${open.length})`,
     ``,

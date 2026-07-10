@@ -33,7 +33,7 @@ export default async function PageView(props: {
     .all<VersionInfo>()
   if (!versions.length) notFound()
 
-  const mainlines = versions.filter((x) => x.kind !== 'variant')
+  const mainlines = versions.filter((x) => x.kind !== 'variant' && x.kind !== 'archived')
   const wanted = v ? versions.find((x) => x.number === parseInt(v, 10)) : undefined
   const initial = wanted ?? mainlines[mainlines.length - 1]
 
