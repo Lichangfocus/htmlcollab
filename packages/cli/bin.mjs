@@ -163,12 +163,18 @@ npx htmlcollab-cli push <file>           # 发布/更新 → 协作链接
 npx htmlcollab-cli pull                  # 拉取反馈（markdown，含元素锚点）
 npx htmlcollab-cli open                  # 打开协作页
 npx htmlcollab-cli push <file> --slug <slug> --server <url>   # 向他人页面发布（需编辑权限）
+npx htmlcollab-cli push <file> --resolves <id,id>   # 发布并把处理过的反馈标记为已解决（意图卡 id 与评论 id 都支持）
 \`\`\`
+
+## 画布协作
+1. pull 里的每个意图和评论都有 id——处理完 push 带 --resolves id1,id2（两类 id 混填），评论自动收到"已在 vN 中处理"。
+2. push 自动带 base 做并行冲突检测：别人先发布了新主线时你的 push 落为变体帧（不覆盖不报错），创建者可在画布「设为主线」。如实转告 CLI 输出即可。
+3. 用户粘贴的指令块里若含 --base / --resolves 参数，原样保留执行。
 
 ## 铁律
 1. 修改 HTML 必须保留所有 data-cc-id 属性（评论锚点）；新增元素无需自己加，push 时服务端注入。
 2. push 会把注入锚点后的 HTML 写回本地文件，这是预期行为。
-3. 处理完反馈可解决评论并附回复：POST <server>/api/comments/<id>/resolve，Bearer token 在 ~/.htmlcollab.json。
+3. 解决反馈优先用 push --resolves；需自定义答复才用 POST <server>/api/comments/<id>/resolve（Bearer token 在 ~/.htmlcollab.json）。
 4. push 403 = 无编辑权限：让页面创建者在网页「分享 / 权限」里授权。
 5. 他人页面源码：curl <server>/api/p/<slug>/html
 `
