@@ -1,6 +1,6 @@
-# HTML Collab (htmlcollab)
+# AI在线HTML协作（htmlcollab）
 
-agent 产出的 HTML 的协作评审层：本地 HTML 一键在线化 → 协作者选中元素评论 → 评论结构化回流给 agent（CLI / MCP），成为下一轮迭代的上下文。
+**AI在线HTML协作** —— agent 产出的 HTML 的协作评审层：本地 HTML 一键在线化 → 协作者选中元素评论 → 评论结构化回流给 agent（CLI / MCP），成为下一轮迭代的上下文。（技术标识/包名仍为 `htmlcollab`）
 
 **在线服务**: https://htmlcollab.lichangin.workers.dev
 
